@@ -490,8 +490,12 @@ body {
   padding: 5px 10px;
   font-size: 11px;
   white-space: nowrap;
+  min-width: 110px;
+  text-align: center;
 }
-.btn-buy-upg:hover { background: rgba(99,102,241,0.15); }
+.btn-buy-upg:hover:not(:disabled) { background: rgba(99,102,241,0.15); }
+.btn-buy-upg:disabled { opacity: 0.45; cursor: not-allowed; }
+.btn-buy-upg.locked { border-color: var(--text-muted); color: var(--text-muted); }
 
 .btn-danger {
   border-color: var(--danger);

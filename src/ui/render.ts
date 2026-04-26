@@ -370,56 +370,80 @@ export class Renderer {
   // ── Upgrades panel ───────────────────────────────────────────────────────
 
   private updateUpgrades(upgradeSystem: UpgradeSystem, player: Player, market: Market): void {
-    const netWorth = player.getNetWorth(market);
-    const available = upgradeSystem.getAvailableUpgrades(netWorth);
     const purchased = upgradeSystem.getPurchasedUpgrades();
-    const total = available.length + purchased.length;
 
-    if (total === this.lastUpgradeCount) return;
-    this.lastUpgradeCount = total;
+    // Rebuild DOM structure only when a new purchase happens
+    if (purchased.length !== this.lastUpgradeCount) {
+      this.lastUpgradeCount = purchased.length;
+      this.buildUpgradeList(upgradeSystem);
+    }
 
+    // Update button disabled state every tick as cash changes
+    this.refreshUpgradeButtons(upgradeSystem, player, market);
+
+    if (upgradeSystem.hasPurchased('prestige_chip')) {
+      document.getElementById('btn-prestige')!.classList.remove('hidden');
+    }
+  }
+
+  private buildUpgradeList(upgradeSystem: UpgradeSystem): void {
     const container = document.getElementById('upgrade-list')!;
     container.innerHTML = '';
 
-    if (available.length === 0 && purchased.length === 0) {
-      container.innerHTML = '<p class="empty-msg">Grow your net worth to unlock upgrades.</p>';
-      return;
+    for (const upg of upgradeSystem.getAllUpgrades()) {
+      if (upgradeSystem.hasPurchased(upg.id)) {
+        const card = createEl('div', 'upgrade-card owned');
+        card.innerHTML = `
+          <div class="upg-info">
+            <span class="upg-name">${upg.emoji} ${upg.name}</span>
+            <span class="upg-desc">${upg.description}</span>
+          </div>
+          <span class="upg-owned-badge">OWNED</span>
+        `;
+        container.appendChild(card);
+      } else {
+        const card = createEl('div', 'upgrade-card');
+        card.innerHTML = `
+          <div class="upg-info">
+            <span class="upg-name">${upg.emoji} ${upg.name}</span>
+            <span class="upg-desc">${upg.description}</span>
+          </div>
+          <button class="btn btn-buy-upg" data-upg-id="${upg.id}">
+            ${formatCurrency(upg.cost)}
+          </button>
+        `;
+        card.querySelector<HTMLButtonElement>('.btn-buy-upg')!.addEventListener('click', () => {
+          this.callbacks.onBuyUpgrade(upg.id);
+          this.lastUpgradeCount = -1; // force rebuild on next tick
+        });
+        container.appendChild(card);
+      }
     }
+  }
 
-    for (const upg of available) {
-      const card = createEl('div', 'upgrade-card');
-      card.innerHTML = `
-        <div class="upg-info">
-          <span class="upg-name">${upg.emoji} ${upg.name}</span>
-          <span class="upg-desc">${upg.description}</span>
-        </div>
-        <button class="btn btn-buy-upg" data-id="${upg.id}">
-          ${formatCurrency(upg.cost)}
-        </button>
-      `;
-      card.querySelector('.btn-buy-upg')!.addEventListener('click', () => {
-        this.callbacks.onBuyUpgrade(upg.id);
-        this.lastUpgradeCount = -1; // force rebuild
-      });
-      container.appendChild(card);
-    }
+  private refreshUpgradeButtons(upgradeSystem: UpgradeSystem, player: Player, market: Market): void {
+    const container = document.getElementById('upgrade-list')!;
+    const netWorth = player.getNetWorth(market);
 
-    for (const upg of purchased) {
-      const card = createEl('div', 'upgrade-card owned');
-      card.innerHTML = `
-        <div class="upg-info">
-          <span class="upg-name">${upg.emoji} ${upg.name}</span>
-          <span class="upg-desc">${upg.description}</span>
-        </div>
-        <span class="upg-owned-badge">OWNED</span>
-      `;
-      container.appendChild(card);
-    }
+    for (const btn of container.querySelectorAll<HTMLButtonElement>('.btn-buy-upg')) {
+      const id = btn.dataset.upgId!;
+      const upg = upgradeSystem.getAllUpgrades().find(u => u.id === id);
+      if (!upg) continue;
 
-    // Show prestige button if prestige upgrade is owned
-    const prestigeBtn = document.getElementById('btn-prestige')!;
-    if (upgradeSystem.hasPurchased('prestige_chip')) {
-      prestigeBtn.classList.remove('hidden');
+      const canAfford = player.cash >= upg.cost;
+      const meetsThreshold = netWorth >= upg.unlockThreshold;
+      btn.disabled = !canAfford || !meetsThreshold;
+
+      if (!meetsThreshold) {
+        btn.textContent = `🔒 Need ${formatCurrency(upg.unlockThreshold)} NW`;
+        btn.classList.add('locked');
+      } else if (!canAfford) {
+        btn.textContent = `${formatCurrency(upg.cost)} (need ${formatCurrency(upg.cost - player.cash)} more)`;
+        btn.classList.remove('locked');
+      } else {
+        btn.textContent = formatCurrency(upg.cost);
+        btn.classList.remove('locked');
+      }
     }
   }
 

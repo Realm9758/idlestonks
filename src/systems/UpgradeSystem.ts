@@ -96,8 +96,12 @@ export class UpgradeSystem {
     return Array.from(this.purchased);
   }
 
-  getAvailableUpgrades(netWorth: number): UpgradeDefinition[] {
-    return UPGRADES.filter(u => netWorth >= u.unlockThreshold && !this.purchased.has(u.id));
+  getAvailableUpgrades(_netWorth: number): UpgradeDefinition[] {
+    return UPGRADES.filter(u => !this.purchased.has(u.id));
+  }
+
+  getAllUpgrades(): UpgradeDefinition[] {
+    return UPGRADES;
   }
 
   getPurchasedUpgrades(): UpgradeDefinition[] {
