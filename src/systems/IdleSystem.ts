@@ -97,8 +97,9 @@ export class IdleSystem {
       const newItem = this.newsSystem.generateIfDue(this.market, this.dayCount);
       if (newItem) this.callbacks.onNewsGenerated?.(newItem);
 
-      const resolutions = this.newsSystem.dayTick(this.market, this.dayCount);
+      const { resolutions, newItems } = this.newsSystem.dayTick(this.market, this.dayCount);
       for (const r of resolutions) this.callbacks.onNewsResolved?.(r);
+      for (const item of newItems) this.callbacks.onNewsGenerated?.(item);
     }
   }
 

@@ -71,6 +71,15 @@ export class Renderer {
   // News change-detection
   private newsActiveKey = '';
   private storedNewsSystem: NewsSystem | null = null;
+  private currentDay = 0;
+  private currentSecInDay = 0;
+  private currentSecPerDay = 60;
+
+  // Full news page state
+  private newsPageFilter: 'all' | 'active' | 'chains' | 'resolved' = 'all';
+  private newsPageOpen = false;
+  private newsPageKey = '';
+  private newsExpandedIds = new Set<string>();
 
   constructor(callbacks: RenderCallbacks) {
     this.callbacks = callbacks;
@@ -149,11 +158,14 @@ export class Renderer {
 
       <div id="news-panel" class="panel">
         <div class="panel-header">
-          <h2>📰 Breaking News</h2>
+          <h2>📰 Live News</h2>
           <div class="news-panel-actions">
-            <span id="news-active-count" class="panel-sub">0 pending</span>
-            <button id="btn-news-history" class="btn btn-ghost-sm hidden">📋 History</button>
+            <span id="news-next-timer" class="news-next-badge">📅 --:--</span>
+            <button id="btn-open-news-page" class="btn btn-ghost-sm">📰 Feed</button>
           </div>
+        </div>
+        <div class="news-panel-subbar">
+          <span id="news-active-count" class="panel-sub">0 pending</span>
         </div>
         <div id="news-list"><p class="empty-msg">Market watching for developments...</p></div>
       </div>
@@ -211,14 +223,29 @@ export class Renderer {
     </div>
   </div>
 
-  <!-- News history modal -->
-  <div id="news-history-overlay" class="hidden">
-    <div id="news-history-modal">
-      <div class="modal-header">
-        <h3>📰 News Archive</h3>
-        <button id="news-history-close" class="btn-icon">✕</button>
+  <!-- Full news page (full-screen overlay) -->
+  <div id="news-page-overlay" class="hidden">
+    <div id="news-page">
+      <div class="np-header">
+        <div class="np-brand">
+          <span class="np-logo">📰 Market Dispatch</span>
+          <span class="np-tagline">Live intelligence feed</span>
+        </div>
+        <div class="np-center">
+          <div class="np-next-global">
+            <span class="np-next-label">📅 NEXT STORY</span>
+            <span id="np-global-timer" class="np-next-time">--:--</span>
+          </div>
+        </div>
+        <div id="np-filters" class="np-filters">
+          <button class="np-filter-btn np-filter-active" data-filter="all">All</button>
+          <button class="np-filter-btn" data-filter="active">⏳ Active</button>
+          <button class="np-filter-btn" data-filter="chains">🔗 Chains</button>
+          <button class="np-filter-btn" data-filter="resolved">Archive</button>
+        </div>
+        <button id="news-page-close" class="btn-icon">✕</button>
       </div>
-      <div id="news-history-content"></div>
+      <div id="np-feed" class="np-feed"></div>
     </div>
   </div>
 
@@ -279,12 +306,24 @@ export class Renderer {
     document.getElementById('intel-overlay')!.addEventListener('click', (e) => {
       if (e.target === document.getElementById('intel-overlay')) this.hideIntelModal();
     });
-    document.getElementById('btn-news-history')!.addEventListener('click', () => {
-      if (this.storedNewsSystem) this.showNewsHistory(this.storedNewsSystem);
+    document.getElementById('btn-open-news-page')!.addEventListener('click', () => this.showNewsPage());
+    document.getElementById('news-page-close')!.addEventListener('click', () => this.hideNewsPage());
+    document.getElementById('news-page-overlay')!.addEventListener('click', (e) => {
+      if (e.target === document.getElementById('news-page-overlay')) this.hideNewsPage();
     });
-    document.getElementById('news-history-close')!.addEventListener('click', () => this.hideNewsHistory());
-    document.getElementById('news-history-overlay')!.addEventListener('click', (e) => {
-      if (e.target === document.getElementById('news-history-overlay')) this.hideNewsHistory();
+    document.getElementById('np-filters')!.addEventListener('click', (e) => {
+      const btn = (e.target as HTMLElement).closest<HTMLElement>('.np-filter-btn');
+      if (btn?.dataset.filter) this.setNewsPageFilter(btn.dataset.filter as 'all' | 'active' | 'chains' | 'resolved');
+    });
+    document.getElementById('np-feed')!.addEventListener('click', (e) => {
+      const btn = (e.target as HTMLElement).closest<HTMLElement>('.np-expand-btn');
+      if (!btn?.dataset.expandId) return;
+      const id = btn.dataset.expandId;
+      const body = document.getElementById(`npbody-${id}`);
+      if (!body) return;
+      const isOpen = !body.classList.contains('hidden');
+      if (isOpen) { this.newsExpandedIds.delete(id); body.classList.add('hidden'); btn.textContent = '▼ Details'; }
+      else         { this.newsExpandedIds.add(id);    body.classList.remove('hidden'); btn.textContent = '▲ Hide'; }
     });
     document.getElementById('btn-dark')!.addEventListener('click', () => this.callbacks.onDarkModeToggle());
     document.getElementById('btn-skip-day')!.addEventListener('click', () => this.callbacks.onSkipDay());
@@ -298,7 +337,7 @@ export class Renderer {
         this.hideInsightPanel();
         this.hideIntelModal();
         this.hideModal();
-        this.hideNewsHistory();
+        this.hideNewsPage();
       }
     });
   }
@@ -332,8 +371,12 @@ export class Renderer {
     secondsPerDay = 60,
     newsSystem?: NewsSystem,
   ): void {
+    if (newsSystem) this.storedNewsSystem = newsSystem;
+    this.currentDay = day;
+    this.currentSecInDay = secondsInDay;
+    this.currentSecPerDay = secondsPerDay;
     this.updateHeader(player, market, upgradeSystem, day);
-    this.updateMarket(market, player, upgradeSystem);
+    this.updateMarket(market, player, upgradeSystem, day);
     this.updatePortfolio(market);
     this.updateNews(newsSystem, day, secondsInDay, secondsPerDay);
     this.updateEvents(eventSystem, upgradeSystem, day, secondsInDay, secondsPerDay);
@@ -360,7 +403,7 @@ export class Renderer {
 
   // ── Market panel ──────────────────────────────────────────────────────────
 
-  private updateMarket(market: Market, player: Player, upgradeSystem: UpgradeSystem): void {
+  private updateMarket(market: Market, player: Player, upgradeSystem: UpgradeSystem, day: number): void {
     const container = document.getElementById('asset-list')!;
     const unlocked = market.getUnlockedAssets();
 
@@ -430,6 +473,23 @@ export class Renderer {
 
       const ownedEl = row.querySelector('.asset-owned') as HTMLElement;
       ownedEl.textContent = asset.owned > 0 ? `Own: ${asset.owned}` : '';
+
+      // ── Chain / news line ──────────────────────────────────────────────────
+      const newsLine = row.querySelector<HTMLElement>('.asset-news-line');
+      if (newsLine && this.storedNewsSystem) {
+        const chainNews = this.storedNewsSystem.getActive()
+          .filter(n => n.targetAssetId === asset.id && n.chainInfo);
+        if (chainNews.length > 0) {
+          const cn = chainNews[0];
+          const ci = cn.chainInfo!;
+          const daysLeft = cn.triggerDay - day;
+          const dayStr = daysLeft <= 1 ? 'today' : `${daysLeft}d`;
+          newsLine.textContent = `🔗 ${ci.chainTitle} (${ci.stepIndex + 1}/${ci.totalSteps}): "${cn.headline}" — ${dayStr}`;
+          newsLine.classList.remove('hidden');
+        } else {
+          newsLine.classList.add('hidden');
+        }
+      }
     }
   }
 
@@ -446,6 +506,7 @@ export class Renderer {
           <button class="btn-analyse btn-icon" title="Analyse ${asset.name}">🔍</button>
           <span class="asset-owned"></span>
         </div>
+        <div class="asset-news-line hidden"></div>
         <div class="asset-indicators">
           <div class="ind-item" title="Hype — decays over time, boosts price when high">
             <span class="ind-icon">🔥</span>
@@ -558,22 +619,32 @@ export class Renderer {
     secondsInDay: number,
     secondsPerDay: number,
   ): void {
+    if (!newsSystem) return;
+
+    // ── "Next news in" timer ───────────────────────────────────────────────
+    const nextDay   = newsSystem.getNextGenerationDay();
+    const daysUntil = Math.max(0, nextDay - day);
+    const secsUntil = daysUntil === 0
+      ? 0
+      : Math.max(0, (daysUntil - 1) * secondsPerDay + (secondsPerDay - secondsInDay));
+    const nm = Math.floor(secsUntil / 60);
+    const ns = secsUntil % 60;
+    const timerEl = document.getElementById('news-next-timer');
+    if (timerEl) timerEl.textContent = daysUntil === 0 ? '📅 soon' : `📅 ${nm}:${ns.toString().padStart(2, '0')}`;
+
+    const npGlobal = document.getElementById('np-global-timer');
+    if (npGlobal) npGlobal.textContent = daysUntil === 0 ? 'now' : `${nm}:${ns.toString().padStart(2, '0')}`;
+
+    // ── Compact panel ─────────────────────────────────────────────────────
     const container = document.getElementById('news-list')!;
     const countEl   = document.getElementById('news-active-count')!;
-    const histBtn   = document.getElementById('btn-news-history')!;
-
-    if (!newsSystem) return;
-    this.storedNewsSystem = newsSystem;
-
-    const active = newsSystem.getActive();
+    const active    = newsSystem.getActive();
     countEl.textContent = active.length === 0 ? '0 pending' : `${active.length} pending`;
-    histBtn.classList.toggle('hidden', newsSystem.getAll().length === 0);
 
     const sorted = [...active].sort((a, b) => a.triggerDay - b.triggerDay);
     const newKey = sorted.map(n => n.id).join('|');
 
     if (newKey !== this.newsActiveKey) {
-      // Structural change — rebuild DOM
       this.newsActiveKey = newKey;
       container.innerHTML = '';
       if (active.length === 0) {
@@ -586,11 +657,21 @@ export class Renderer {
         }
       }
     } else {
-      // Fast path — only update countdowns in-place
       const cards = container.querySelectorAll<HTMLElement>('.news-item[data-news-id]');
       cards.forEach((card, i) => {
         if (sorted[i]) this.refreshNewsCountdown(card, sorted[i], day, secondsInDay, secondsPerDay);
       });
+    }
+
+    // ── Full news page: refresh if open ───────────────────────────────────
+    if (this.newsPageOpen) {
+      const allKey = newsSystem.getAll().map(n => `${n.id}:${String(n.resolved)}`).join('|');
+      if (allKey !== this.newsPageKey) {
+        this.newsPageKey = allKey;
+        this.renderNewsPage();
+      } else {
+        this.refreshNewsPageCountdowns();
+      }
     }
   }
 
@@ -608,9 +689,17 @@ export class Renderer {
     const urgencyCls = imminent ? 'news-imminent' : urgent ? 'news-urgent' : warning ? 'news-warning' : '';
     const successPct = Math.round(item.successChance * 100);
 
+    const chainRow = item.chainInfo
+      ? `<div class="news-chain-row">
+           <span class="chain-badge">🔗 ${item.chainInfo.chainTitle}</span>
+           <span class="chain-step-progress">${item.chainInfo.stepIndex + 1} / ${item.chainInfo.totalSteps}</span>
+         </div>`
+      : '';
+
     const el = createEl('div', `news-item news-enter ${urgencyCls}`);
     el.dataset.newsId = item.id;
     el.innerHTML = `
+      ${chainRow}
       <div class="news-top-row">
         <span class="news-type-badge ${typeInfo.cls}">${typeInfo.icon} ${typeInfo.label}</span>
         <span class="news-headline">${item.headline}</span>
@@ -978,57 +1067,188 @@ export class Renderer {
     document.getElementById('intel-overlay')!.classList.add('hidden');
   }
 
-  // ── News history modal ────────────────────────────────────────────────────
+  // ── Full news page ────────────────────────────────────────────────────────
 
-  showNewsHistory(newsSystem: NewsSystem): void {
-    const overlay = document.getElementById('news-history-overlay')!;
-    const content = document.getElementById('news-history-content')!;
-    overlay.classList.remove('hidden');
-    content.innerHTML = '';
+  showNewsPage(): void {
+    this.newsPageOpen = true;
+    document.getElementById('news-page-overlay')!.classList.remove('hidden');
+    this.newsPageKey = '';  // force full render
+    this.renderNewsPage();
+  }
 
-    const all = newsSystem.getAll();
-    if (all.length === 0) {
-      content.innerHTML = '<p class="empty-msg">No news history yet.</p>';
+  hideNewsPage(): void {
+    this.newsPageOpen = false;
+    document.getElementById('news-page-overlay')!.classList.add('hidden');
+  }
+
+  private setNewsPageFilter(filter: 'all' | 'active' | 'chains' | 'resolved'): void {
+    this.newsPageFilter = filter;
+    document.querySelectorAll<HTMLElement>('#np-filters .np-filter-btn').forEach(btn => {
+      btn.classList.toggle('np-filter-active', btn.dataset.filter === filter);
+    });
+    this.renderNewsPage();
+  }
+
+  private renderNewsPage(): void {
+    const feed = document.getElementById('np-feed')!;
+    const ns   = this.storedNewsSystem;
+    if (!ns) { feed.innerHTML = '<p class="empty-msg">No data yet.</p>'; return; }
+
+    let all = ns.getAll();
+    if (this.newsPageFilter === 'active')   all = all.filter(n => !n.resolved);
+    if (this.newsPageFilter === 'chains')   all = all.filter(n => !!n.chainInfo);
+    if (this.newsPageFilter === 'resolved') all = all.filter(n => n.resolved);
+
+    const active   = all.filter(n => !n.resolved).sort((a, b) => a.triggerDay - b.triggerDay);
+    const resolved = all.filter(n => n.resolved).reverse();
+
+    if (active.length === 0 && resolved.length === 0) {
+      feed.innerHTML = '<p class="empty-msg">Nothing to show. Trade more to generate news!</p>';
       return;
     }
 
-    const active   = all.filter(n => !n.resolved);
-    const resolved = all.filter(n => n.resolved);
+    feed.innerHTML = '';
 
-    if (active.length) {
-      content.appendChild(createEl('div', 'nh-section-label', `📡 Active (${active.length})`));
-      for (const item of [...active].sort((a, b) => a.triggerDay - b.triggerDay))
-        content.appendChild(this.buildHistoryItem(item));
+    if (this.newsPageFilter === 'chains' && active.length > 0) {
+      // Group chain items by chainId
+      const groups = new Map<string, NewsItem[]>();
+      for (const item of [...active, ...resolved]) {
+        const cid = item.chainInfo!.chainId;
+        if (!groups.has(cid)) groups.set(cid, []);
+        groups.get(cid)!.push(item);
+      }
+      for (const chainItems of groups.values()) {
+        const sorted = [...chainItems].sort((a, b) => a.chainInfo!.stepIndex - b.chainInfo!.stepIndex);
+        const ci = sorted[0].chainInfo!;
+        const hdr = createEl('div', 'np-chain-group-hdr');
+        hdr.innerHTML = `<span class="chain-badge">🔗 ${ci.chainTitle}</span><span class="np-chain-count">${chainItems.length} step(s)</span>`;
+        feed.appendChild(hdr);
+        for (const item of sorted) feed.appendChild(this.buildDetailedCard(item));
+      }
+      return;
     }
-    if (resolved.length) {
-      content.appendChild(createEl('div', 'nh-section-label', `📁 Resolved (${resolved.length})`));
-      for (const item of [...resolved].reverse())
-        content.appendChild(this.buildHistoryItem(item));
+
+    if (active.length > 0) {
+      feed.appendChild(createEl('div', 'np-section-label', `⏳ Upcoming — ${active.length} active`));
+      for (const item of active) feed.appendChild(this.buildDetailedCard(item));
+    }
+    if (resolved.length > 0) {
+      feed.appendChild(createEl('div', 'np-section-label', `📁 Archive — ${resolved.length} resolved`));
+      for (const item of resolved) feed.appendChild(this.buildDetailedCard(item));
+    }
+
+    // Restore expanded states
+    for (const id of this.newsExpandedIds) {
+      const body = document.getElementById(`npbody-${id}`);
+      if (!body) continue;
+      body.classList.remove('hidden');
+      const btn = feed.querySelector<HTMLElement>(`[data-expand-id="${id}"]`);
+      if (btn) btn.textContent = '▲ Hide';
     }
   }
 
-  private buildHistoryItem(item: NewsItem): HTMLElement {
-    const typeInfo  = NEWS_TYPE_INFO[item.type] ?? { icon: '📰', label: 'NEWS', cls: 'nt-default' };
-    const statusCls = !item.resolved ? '' : item.resolvedSuccess ? 'nh-success' : 'nh-fail';
-    const statusIcon = !item.resolved ? '⏳' : item.resolvedSuccess ? '✅' : '❌';
+  private buildDetailedCard(item: NewsItem): HTMLElement {
+    const ti  = NEWS_TYPE_INFO[item.type] ?? { icon: '📰', label: 'NEWS', cls: 'nt-default' };
+    const pct = Math.round(item.successChance * 100);
 
-    const el = createEl('div', `nh-item ${statusCls}`);
+    // Status label + class
+    let statusCls = 'np-status-active', statusTxt = '⏳ UPCOMING';
+    if (!item.resolved) {
+      const dl = item.triggerDay - this.currentDay;
+      const sl = Math.max(0, (dl - 1) * this.currentSecPerDay + (this.currentSecPerDay - this.currentSecInDay));
+      if (dl <= 1 && sl <= 15)  { statusCls = 'np-status-imminent'; statusTxt = '🔴 IMMINENT'; }
+      else if (dl <= 1)          { statusCls = 'np-status-urgent';   statusTxt = '⚠️ URGENT'; }
+    } else {
+      statusCls = item.resolvedSuccess ? 'np-status-success' : 'np-status-fail';
+      statusTxt = item.resolvedSuccess ? '✅ SUCCESS' : '❌ FAILED';
+    }
+
+    // Card urgency class
+    let cardCls = 'np-card';
+    if (!item.resolved) {
+      const dl = item.triggerDay - this.currentDay;
+      const sl = Math.max(0, (dl - 1) * this.currentSecPerDay + (this.currentSecPerDay - this.currentSecInDay));
+      cardCls += dl <= 1 && sl <= 15 ? ' np-card-imminent' : dl <= 1 ? ' np-card-urgent' : ' np-card-active';
+      if (item.chainInfo) cardCls += ' np-card-chain';
+    } else {
+      cardCls += item.resolvedSuccess ? ' np-card-success' : ' np-card-fail';
+    }
+
+    // Chain strip
+    let chainStrip = '';
+    if (item.chainInfo) {
+      const ci   = item.chainInfo;
+      const dots = Array.from({ length: ci.totalSteps }, (_, i) => {
+        if (i < ci.stepIndex)   return '<span class="np-step np-step-done">●</span>';
+        if (i === ci.stepIndex) {
+          const r = item.resolved ? (item.resolvedSuccess ? 'np-step-ok' : 'np-step-bad') : '';
+          const c = item.resolved ? (item.resolvedSuccess ? '✓' : '✗') : '●';
+          return `<span class="np-step np-step-cur ${r}">${c}</span>`;
+        }
+        return '<span class="np-step np-step-future">○</span>';
+      }).join('');
+      chainStrip = `<div class="np-chain-strip"><span class="chain-badge">🔗 ${ci.chainTitle}</span><div class="np-chain-dots">${dots}</div><span class="chain-step-progress">Step ${ci.stepIndex + 1}/${ci.totalSteps}</span></div>`;
+    }
+
+    // Countdown (active only)
+    let cdHtml = '';
+    if (!item.resolved) {
+      const dl = item.triggerDay - this.currentDay;
+      const sl = Math.max(0, (dl - 1) * this.currentSecPerDay + (this.currentSecPerDay - this.currentSecInDay));
+      const mm = Math.floor(sl / 60), ss = sl % 60;
+      const lab = dl <= 1 ? 'today' : `${dl} days`;
+      cdHtml = `<span class="np-dot">·</span><span class="np-card-countdown" data-countdown data-trigger-day="${item.triggerDay}">⏳ ${lab} (${mm}:${ss.toString().padStart(2, '0')})</span>`;
+    }
+
+    // Impact preview
+    const sMult = item.successMult, fMult = item.failMult;
+    const sDir  = sMult >= 1 ? `+${((sMult - 1) * 100).toFixed(0)}%` : `-${((1 - sMult) * 100).toFixed(0)}%`;
+    const fDir  = fMult >= 1 ? `+${((fMult - 1) * 100).toFixed(0)}%` : `-${((1 - fMult) * 100).toFixed(0)}%`;
+    const sCls  = sMult >= 1 ? 'np-outcome-bull' : 'np-outcome-bear';
+    const fCls  = fMult >= 1 ? 'np-outcome-bull' : 'np-outcome-bear';
+    const resolvedHtml = item.resolvedMessage
+      ? `<div class="np-resolved-msg">${item.resolvedMessage}</div>` : '';
+
+    const el = document.createElement('article');
+    el.className = cardCls;
+    el.dataset.npId = item.id;
     el.innerHTML = `
-      <div class="nh-top">
-        <span class="news-type-badge ${typeInfo.cls}">${typeInfo.icon} ${typeInfo.label}</span>
-        <span class="nh-status">${statusIcon}</span>
-        <span class="nh-headline">${item.headline}</span>
+      ${chainStrip}
+      <div class="np-card-top">
+        <div class="np-card-badges">
+          <span class="news-type-badge ${ti.cls}">${ti.icon} ${ti.label}</span>
+          <span class="np-day-tag">Day ${item.createdDay + 1}</span>
+        </div>
+        <span class="np-card-status ${statusCls}">${statusTxt}</span>
       </div>
-      <div class="nh-meta">
-        <span class="nh-target">${item.targetEmoji} ${item.targetName}</span>
-        ${item.resolvedMessage ? `<span class="nh-resolved-msg">${item.resolvedMessage}</span>` : ''}
+      <div class="np-card-headline">${item.headline}</div>
+      <div class="np-card-info">
+        <span class="np-card-stock">${item.targetEmoji} ${item.targetName}</span>
+        ${!item.resolved ? `<span class="np-dot">·</span><span class="np-card-chance ${pct >= 60 ? 'chance-high' : pct >= 50 ? 'chance-med' : 'chance-low'}">${pct}% success</span>` : ''}
+        ${cdHtml}
+      </div>
+      <button class="np-expand-btn" data-expand-id="${item.id}">▼ Details</button>
+      <div class="np-card-body hidden" id="npbody-${item.id}">
+        <div class="np-outcomes">
+          <div class="np-outcome ${sCls}">✅ Success: ${sDir} price shock</div>
+          <div class="np-outcome ${fCls}">❌ Fail: ${fDir} price shock</div>
+        </div>
+        ${resolvedHtml}
       </div>
     `;
     return el;
   }
 
-  hideNewsHistory(): void {
-    document.getElementById('news-history-overlay')!.classList.add('hidden');
+  private refreshNewsPageCountdowns(): void {
+    const els = document.querySelectorAll<HTMLElement>('#np-feed [data-countdown]');
+    for (const el of els) {
+      const trigDay = parseInt(el.dataset.triggerDay ?? '0', 10);
+      const dl = trigDay - this.currentDay;
+      const sl = Math.max(0, (dl - 1) * this.currentSecPerDay + (this.currentSecPerDay - this.currentSecInDay));
+      const mm = Math.floor(sl / 60), ss = sl % 60;
+      const lab = dl <= 1 ? 'today' : `${dl} days`;
+      el.textContent = `⏳ ${lab} (${mm}:${ss.toString().padStart(2, '0')})`;
+    }
   }
 
   // ── Toasts ────────────────────────────────────────────────────────────────

@@ -6,6 +6,15 @@ import type { EventSeverity } from './EventSystem.ts';
 
 export type NewsItemType = 'hype' | 'crash' | 'growth' | 'scandal' | 'breakthrough';
 
+export interface NewsChainInfo {
+  chainId: string;
+  chainTitle: string;
+  chainDefIndex: number;
+  stepIndex: number;    // 0-based
+  totalSteps: number;
+  continueOnSuccess: boolean;
+}
+
 export interface NewsItem {
   id: string;
   headline: string;
@@ -26,6 +35,7 @@ export interface NewsItem {
   resolved: boolean;
   resolvedSuccess?: boolean;
   resolvedMessage?: string;
+  chainInfo?: NewsChainInfo;
 }
 
 export interface NewsResolution {
@@ -41,6 +51,7 @@ export interface NewsSaveState {
   items: NewsItem[];
   nextGenerationDay: number;
   idCounter: number;
+  chainIdCounter?: number;
 }
 
 // ── Templates ─────────────────────────────────────────────────────────────────
@@ -240,6 +251,207 @@ const TEMPLATES: NewsTemplate[] = [
   },
 ];
 
+// ── Chain definitions ─────────────────────────────────────────────────────────
+
+interface ChainStepDef {
+  headline: (name: string) => string;
+  type: NewsItemType;
+  successChance: number;
+  getSuccessMult: () => number;
+  getFailMult: (sm: number) => number;
+  successHypeBoost: number;
+  failHypeDrain: number;
+  successTrendBoost: number;
+  successMsgTemplate: string;
+  failMsgTemplate: string;
+  continueOnSuccess: boolean;
+}
+
+interface ChainDef {
+  title: string;
+  steps: ChainStepDef[];
+}
+
+const CHAIN_DEFS: ChainDef[] = [
+  // ── Hostile Takeover ──────────────────────────────────────────────────────
+  {
+    title: 'Hostile Takeover',
+    steps: [
+      {
+        type: 'growth',
+        headline: n => `Acquisition talks rumoured for ${n}`,
+        successChance: 0.65,
+        getSuccessMult: () => 1.25 + Math.random() * 0.35,
+        getFailMult:    () => 0.78 + Math.random() * 0.15,
+        successHypeBoost: 0.15, failHypeDrain: 0.25, successTrendBoost: 0.001,
+        successMsgTemplate: '🤝 Takeover talks confirmed! {emoji} {name} +{pct}%',
+        failMsgTemplate:    '💔 Talks collapsed early. {emoji} {name} -{pct}%',
+        continueOnSuccess: true,
+      },
+      {
+        type: 'growth',
+        headline: n => `${n} shareholder vote on takeover imminent`,
+        successChance: 0.58,
+        getSuccessMult: () => 1.5 + Math.random() * 0.6,
+        getFailMult:    () => 0.55 + Math.random() * 0.20,
+        successHypeBoost: 0.20, failHypeDrain: 0.20, successTrendBoost: 0.002,
+        successMsgTemplate: '🏛️ Vote proceeding! {emoji} {name} surges +{pct}%',
+        failMsgTemplate:    '🏛️ Vote called off. {emoji} {name} drops -{pct}%',
+        continueOnSuccess: true,
+      },
+      {
+        type: 'growth',
+        headline: n => `${n} takeover — final approval verdict`,
+        successChance: 0.52,
+        getSuccessMult: () => 2.0 + Math.random() * 1.0,
+        getFailMult:    () => 0.30 + Math.random() * 0.25,
+        successHypeBoost: 0.40, failHypeDrain: 0.20, successTrendBoost: 0.004,
+        successMsgTemplate: '🎉 TAKEOVER APPROVED! {emoji} {name} explodes +{pct}%',
+        failMsgTemplate:    '🚫 Takeover blocked. {emoji} {name} collapses -{pct}%',
+        continueOnSuccess: false,
+      },
+    ],
+  },
+
+  // ── Regulatory Crackdown ──────────────────────────────────────────────────
+  {
+    title: 'Regulatory Crackdown',
+    steps: [
+      {
+        type: 'scandal',
+        headline: n => `Regulators sniffing around ${n}`,
+        successChance: 0.62,
+        getSuccessMult: () => 0.70 + Math.random() * 0.15,
+        getFailMult:    (sm) => 1 + (1 - sm) * 0.35,
+        successHypeBoost: 0, failHypeDrain: 1, successTrendBoost: -0.001,
+        successMsgTemplate: '👀 Regulatory scrutiny confirmed. {emoji} {name} -{pct}%',
+        failMsgTemplate:    '✅ Regulators stood down. {emoji} {name} relief +{pct}%',
+        continueOnSuccess: true,
+      },
+      {
+        type: 'scandal',
+        headline: n => `Formal inquiry opened into ${n}`,
+        successChance: 0.60,
+        getSuccessMult: () => 0.45 + Math.random() * 0.20,
+        getFailMult:    (sm) => 1 + (1 - sm) * 0.50,
+        successHypeBoost: 0, failHypeDrain: 1, successTrendBoost: -0.003,
+        successMsgTemplate: '📋 Inquiry formalized. {emoji} {name} slammed -{pct}%',
+        failMsgTemplate:    '🔍 Inquiry cleared. {emoji} {name} +{pct}%',
+        continueOnSuccess: true,
+      },
+      {
+        type: 'scandal',
+        headline: n => `${n} awaits record fine ruling`,
+        successChance: 0.55,
+        getSuccessMult: () => 0.20 + Math.random() * 0.25,
+        getFailMult:    (sm) => 1 + (1 - sm) * 0.65,
+        successHypeBoost: 0, failHypeDrain: 1, successTrendBoost: -0.006,
+        successMsgTemplate: '💸 RECORD FINE ISSUED! {emoji} {name} obliterated -{pct}%',
+        failMsgTemplate:    '✅ Case dismissed! {emoji} {name} rockets +{pct}%',
+        continueOnSuccess: false,
+      },
+    ],
+  },
+
+  // ── Moonshot Project ──────────────────────────────────────────────────────
+  {
+    title: 'Moonshot Project',
+    steps: [
+      {
+        type: 'breakthrough',
+        headline: n => `Whispers of breakthrough tech at ${n}`,
+        successChance: 0.62,
+        getSuccessMult: () => 1.30 + Math.random() * 0.45,
+        getFailMult:    () => 0.72 + Math.random() * 0.15,
+        successHypeBoost: 0.20, failHypeDrain: 0.20, successTrendBoost: 0.002,
+        successMsgTemplate: '🔬 Tech rumours confirmed! {emoji} {name} +{pct}%',
+        failMsgTemplate:    '😶 Rumours denied. {emoji} {name} -{pct}%',
+        continueOnSuccess: true,
+      },
+      {
+        type: 'breakthrough',
+        headline: n => `${n} files major patent — R&D confirmed`,
+        successChance: 0.58,
+        getSuccessMult: () => 1.55 + Math.random() * 0.65,
+        getFailMult:    () => 0.50 + Math.random() * 0.25,
+        successHypeBoost: 0.30, failHypeDrain: 0.20, successTrendBoost: 0.003,
+        successMsgTemplate: '📄 Patent reveals major tech! {emoji} {name} +{pct}%',
+        failMsgTemplate:    '❌ Patent rejected. {emoji} {name} -{pct}%',
+        continueOnSuccess: true,
+      },
+      {
+        type: 'breakthrough',
+        headline: n => `${n} unveils moonshot results`,
+        successChance: 0.50,
+        getSuccessMult: () => 2.2 + Math.random() * 1.5,
+        getFailMult:    () => 0.22 + Math.random() * 0.20,
+        successHypeBoost: 0.50, failHypeDrain: 0.15, successTrendBoost: 0.005,
+        successMsgTemplate: '🚀 MOONSHOT CONFIRMED! {emoji} {name} launches +{pct}%',
+        failMsgTemplate:    '💨 Vaporware. {emoji} {name} craters -{pct}%',
+        continueOnSuccess: false,
+      },
+    ],
+  },
+
+  // ── Corporate Scandal ─────────────────────────────────────────────────────
+  {
+    title: 'Corporate Scandal',
+    steps: [
+      {
+        type: 'scandal',
+        headline: n => `Whistleblower emerges at ${n}`,
+        successChance: 0.58,
+        getSuccessMult: () => 0.58 + Math.random() * 0.18,
+        getFailMult:    (sm) => 1 + (1 - sm) * 0.40,
+        successHypeBoost: 0, failHypeDrain: 1, successTrendBoost: -0.002,
+        successMsgTemplate: '🔊 Whistleblower confirmed legit. {emoji} {name} -{pct}%',
+        failMsgTemplate:    '🤐 Whistleblower discredited. {emoji} {name} +{pct}%',
+        continueOnSuccess: true,
+      },
+      {
+        type: 'scandal',
+        headline: n => `Internal audit results for ${n} imminent`,
+        successChance: 0.52,
+        getSuccessMult: () => 0.22 + Math.random() * 0.28,
+        getFailMult:    (sm) => 1 + (1 - sm) * 0.65,
+        successHypeBoost: 0, failHypeDrain: 1, successTrendBoost: -0.005,
+        successMsgTemplate: '📂 Audit confirms fraud! {emoji} {name} obliterated -{pct}%',
+        failMsgTemplate:    '✅ Audit found nothing. {emoji} {name} relief +{pct}%',
+        continueOnSuccess: false,
+      },
+    ],
+  },
+
+  // ── Earnings Cycle ────────────────────────────────────────────────────────
+  {
+    title: 'Earnings Cycle',
+    steps: [
+      {
+        type: 'hype',
+        headline: n => `Pre-earnings hype building around ${n}`,
+        successChance: 0.60,
+        getSuccessMult: () => 1.20 + Math.random() * 0.30,
+        getFailMult:    () => 0.80 + Math.random() * 0.12,
+        successHypeBoost: 0.25, failHypeDrain: 0.25, successTrendBoost: 0.001,
+        successMsgTemplate: '📣 Pre-earnings rally! {emoji} {name} +{pct}%',
+        failMsgTemplate:    '😴 Pre-earnings sell-off. {emoji} {name} -{pct}%',
+        continueOnSuccess: true,
+      },
+      {
+        type: 'growth',
+        headline: n => `${n} earnings — the moment of truth`,
+        successChance: 0.55,
+        getSuccessMult: () => 1.6 + Math.random() * 0.8,
+        getFailMult:    () => 0.40 + Math.random() * 0.25,
+        successHypeBoost: 0.30, failHypeDrain: 0.15, successTrendBoost: 0.003,
+        successMsgTemplate: '📊 EARNINGS BEAT! {emoji} {name} +{pct}%',
+        failMsgTemplate:    '📊 EARNINGS MISS. {emoji} {name} -{pct}%',
+        continueOnSuccess: false,
+      },
+    ],
+  },
+];
+
 // ── Stat-weighted template selection ─────────────────────────────────────────
 //
 // Asset stats bias which news type gets generated:
@@ -292,6 +504,7 @@ export class NewsSystem {
   private items: NewsItem[] = [];
   private nextGenerationDay = 1;
   private idCounter = 0;
+  private chainIdCounter = 0;
   private readonly maxActive = 6;
   private readonly maxHistory = 30;
 
@@ -312,54 +525,119 @@ export class NewsSystem {
     const pool = freeAssets.length > 0 ? freeAssets : assets;
     const target = pool[Math.floor(Math.random() * pool.length)];
 
-    const tpl   = selectTemplate(target);
-    const delay = 1 + Math.floor(Math.random() * 4);  // 1–4 days
-    const sm    = tpl.getSuccessMult();
-    const fm    = tpl.getFailMult(sm);
+    // 20% chance to start a chain, but only if no other chain is currently active
+    const hasActiveChain = active.some(n => n.chainInfo);
+    const startChain = !hasActiveChain && Math.random() < 0.20;
 
-    const item: NewsItem = {
-      id:               `news_${this.idCounter++}`,
-      headline:         tpl.headline(target.name),
-      targetAssetId:    target.id,
-      targetName:       target.name,
-      targetEmoji:      target.emoji,
-      type:             tpl.type,
-      createdDay:       currentDay,
-      triggerDay:       currentDay + delay,
-      successChance:    tpl.successChance,
-      successMult:      sm,
-      failMult:         fm,
-      successHypeBoost: tpl.successHypeBoost,
-      failHypeDrain:    tpl.failHypeDrain,
-      successTrendBoost: tpl.successTrendBoost,
-      successMsgTemplate: tpl.successMsgTemplate,
-      failMsgTemplate:    tpl.failMsgTemplate,
-      resolved: false,
-    };
+    let item: NewsItem;
+
+    if (startChain) {
+      item = this.buildChainStep(target, currentDay, null, 0);
+    } else {
+      const tpl   = selectTemplate(target);
+      const delay = 1 + Math.floor(Math.random() * 4);
+      const sm    = tpl.getSuccessMult();
+      const fm    = tpl.getFailMult(sm);
+      item = {
+        id:               `news_${this.idCounter++}`,
+        headline:         tpl.headline(target.name),
+        targetAssetId:    target.id,
+        targetName:       target.name,
+        targetEmoji:      target.emoji,
+        type:             tpl.type,
+        createdDay:       currentDay,
+        triggerDay:       currentDay + delay,
+        successChance:    tpl.successChance,
+        successMult:      sm,
+        failMult:         fm,
+        successHypeBoost: tpl.successHypeBoost,
+        failHypeDrain:    tpl.failHypeDrain,
+        successTrendBoost: tpl.successTrendBoost,
+        successMsgTemplate: tpl.successMsgTemplate,
+        failMsgTemplate:    tpl.failMsgTemplate,
+        resolved: false,
+      };
+    }
 
     this.items.push(item);
     this.nextGenerationDay = currentDay + 2 + Math.floor(Math.random() * 2);
     return item;
   }
 
+  private buildChainStep(
+    asset: Asset,
+    currentDay: number,
+    existingChainInfo: NewsChainInfo | null,
+    stepIndex: number,
+  ): NewsItem {
+    const defIdx   = existingChainInfo?.chainDefIndex ?? Math.floor(Math.random() * CHAIN_DEFS.length);
+    const chainDef = CHAIN_DEFS[defIdx];
+    const stepDef  = chainDef.steps[stepIndex];
+    const delay    = 1 + Math.floor(Math.random() * 3);
+    const sm       = stepDef.getSuccessMult();
+    const fm       = stepDef.getFailMult(sm);
+    const chainId  = existingChainInfo?.chainId ?? `chain_${this.chainIdCounter++}`;
+
+    return {
+      id:               `news_${this.idCounter++}`,
+      headline:         stepDef.headline(asset.name),
+      targetAssetId:    asset.id,
+      targetName:       asset.name,
+      targetEmoji:      asset.emoji,
+      type:             stepDef.type,
+      createdDay:       currentDay,
+      triggerDay:       currentDay + delay,
+      successChance:    stepDef.successChance,
+      successMult:      sm,
+      failMult:         fm,
+      successHypeBoost: stepDef.successHypeBoost,
+      failHypeDrain:    stepDef.failHypeDrain,
+      successTrendBoost: stepDef.successTrendBoost,
+      successMsgTemplate: stepDef.successMsgTemplate,
+      failMsgTemplate:    stepDef.failMsgTemplate,
+      resolved: false,
+      chainInfo: {
+        chainId,
+        chainTitle:       chainDef.title,
+        chainDefIndex:    defIdx,
+        stepIndex,
+        totalSteps:       chainDef.steps.length,
+        continueOnSuccess: stepDef.continueOnSuccess,
+      },
+    };
+  }
+
+  private spawnChainContinuation(item: NewsItem, asset: Asset, currentDay: number): NewsItem | null {
+    if (!item.chainInfo) return null;
+    const nextIdx = item.chainInfo.stepIndex + 1;
+    if (nextIdx >= item.chainInfo.totalSteps) return null;
+
+    const next = this.buildChainStep(asset, currentDay, item.chainInfo, nextIdx);
+    this.items.push(next);
+    return next;
+  }
+
   // ── Resolution ────────────────────────────────────────────────────────────
 
-  dayTick(market: Market, currentDay: number): NewsResolution[] {
+  dayTick(market: Market, currentDay: number): { resolutions: NewsResolution[]; newItems: NewsItem[] } {
     const resolutions: NewsResolution[] = [];
+    const newItems:    NewsItem[]       = [];
 
     for (const item of this.items) {
       if (item.resolved || item.triggerDay !== currentDay) continue;
-      resolutions.push(this.applyEffect(item, market));
+      const { resolution, chainItem } = this.applyEffect(item, market, currentDay);
+      resolutions.push(resolution);
+      if (chainItem) newItems.push(chainItem);
     }
 
     const unresolved = this.items.filter(n => !n.resolved);
     const resolved   = this.items.filter(n => n.resolved).slice(-this.maxHistory);
     this.items = [...unresolved, ...resolved];
 
-    return resolutions;
+    return { resolutions, newItems };
   }
 
-  private applyEffect(item: NewsItem, market: Market): NewsResolution {
+  private applyEffect(item: NewsItem, market: Market, currentDay: number): { resolution: NewsResolution; chainItem?: NewsItem } {
     const asset   = market.getAsset(item.targetAssetId);
     const success = Math.random() < item.successChance;
 
@@ -368,7 +646,7 @@ export class NewsSystem {
 
     if (!asset) {
       item.resolvedMessage = `${item.targetEmoji} ${item.targetName} not found.`;
-      return { headline: item.headline, targetName: item.targetName, targetEmoji: item.targetEmoji, success: false, message: item.resolvedMessage, severity: 'neutral' };
+      return { resolution: { headline: item.headline, targetName: item.targetName, targetEmoji: item.targetEmoji, success: false, message: item.resolvedMessage, severity: 'neutral' } };
     }
 
     let msg: string;
@@ -388,7 +666,12 @@ export class NewsSystem {
     }
 
     item.resolvedMessage = msg;
-    return { headline: item.headline, targetName: item.targetName, targetEmoji: item.targetEmoji, success, message: msg, severity };
+
+    const chainItem = (success && item.chainInfo?.continueOnSuccess)
+      ? (this.spawnChainContinuation(item, asset, currentDay) ?? undefined)
+      : undefined;
+
+    return { resolution: { headline: item.headline, targetName: item.targetName, targetEmoji: item.targetEmoji, success, message: msg, severity }, chainItem };
   }
 
   // ── Accessors ─────────────────────────────────────────────────────────────
@@ -401,15 +684,23 @@ export class NewsSystem {
     return [...this.items];
   }
 
+  getNextGenerationDay(): number { return this.nextGenerationDay; }
+
   // ── Save / load ───────────────────────────────────────────────────────────
 
   saveState(): NewsSaveState {
-    return { items: this.items.slice(-this.maxHistory), nextGenerationDay: this.nextGenerationDay, idCounter: this.idCounter };
+    return {
+      items: this.items.slice(-this.maxHistory),
+      nextGenerationDay: this.nextGenerationDay,
+      idCounter: this.idCounter,
+      chainIdCounter: this.chainIdCounter,
+    };
   }
 
   loadState(state: NewsSaveState): void {
     this.items             = state.items ?? [];
     this.nextGenerationDay = state.nextGenerationDay ?? 1;
     this.idCounter         = state.idCounter ?? 0;
+    this.chainIdCounter    = state.chainIdCounter ?? 0;
   }
 }

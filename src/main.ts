@@ -43,8 +43,11 @@ const idleSystem = new IdleSystem(
     },
 
     onNewsGenerated(item) {
+      const chainLabel = item.chainInfo
+        ? ` [🔗 ${item.chainInfo.chainTitle} — Step ${item.chainInfo.stepIndex + 1}/${item.chainInfo.totalSteps}]`
+        : '';
       renderer.showToast(
-        `📰 Breaking: "${item.headline}" — triggers in ${item.triggerDay - idleSystem.getDayCount()} day(s)`,
+        `📰 Breaking: "${item.headline}"${chainLabel} — triggers in ${item.triggerDay - idleSystem.getDayCount()} day(s)`,
         'info',
       );
     },
