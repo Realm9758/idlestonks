@@ -1,7 +1,7 @@
 import type { Market } from '../core/Market.ts';
 import type { Player } from '../core/Player.ts';
 import type { EventSystem, EventLogEntry } from '../core/EventSystem.ts';
-import type { NewsSystem } from '../core/NewsSystem.ts';
+import type { NewsSystem, NewsItem } from '../core/NewsSystem.ts';
 import type { UpgradeSystem } from '../systems/UpgradeSystem.ts';
 import type { Asset } from '../core/Asset.ts';
 import {
@@ -28,6 +28,14 @@ export interface RenderCallbacks {
 }
 
 interface Toast { el: HTMLElement; removeAt: number; }
+
+const NEWS_TYPE_INFO: Record<string, { icon: string; label: string; cls: string }> = {
+  hype:         { icon: '🔥', label: 'HYPE',         cls: 'nt-hype' },
+  crash:        { icon: '💥', label: 'CRASH',        cls: 'nt-crash' },
+  growth:       { icon: '📈', label: 'GROWTH',       cls: 'nt-growth' },
+  scandal:      { icon: '🕵️', label: 'SCANDAL',      cls: 'nt-scandal' },
+  breakthrough: { icon: '⚡', label: 'BREAKTHROUGH', cls: 'nt-breakthrough' },
+};
 
 const NEWS_HEADLINES = [
   'Analyst upgrades CatCoin to "Very Meow" with $420 price target',
@@ -59,6 +67,10 @@ export class Renderer {
 
   // Currently open insight panel asset
   private openInsightId: string | null = null;
+
+  // News change-detection
+  private newsActiveKey = '';
+  private storedNewsSystem: NewsSystem | null = null;
 
   constructor(callbacks: RenderCallbacks) {
     this.callbacks = callbacks;
@@ -138,7 +150,10 @@ export class Renderer {
       <div id="news-panel" class="panel">
         <div class="panel-header">
           <h2>📰 Breaking News</h2>
-          <span id="news-active-count" class="panel-sub">0 pending</span>
+          <div class="news-panel-actions">
+            <span id="news-active-count" class="panel-sub">0 pending</span>
+            <button id="btn-news-history" class="btn btn-ghost-sm hidden">📋 History</button>
+          </div>
         </div>
         <div id="news-list"><p class="empty-msg">Market watching for developments...</p></div>
       </div>
@@ -193,6 +208,17 @@ export class Renderer {
         <button id="intel-close" class="btn-icon">✕</button>
       </div>
       <div id="intel-content" class="intel-content-wrap"></div>
+    </div>
+  </div>
+
+  <!-- News history modal -->
+  <div id="news-history-overlay" class="hidden">
+    <div id="news-history-modal">
+      <div class="modal-header">
+        <h3>📰 News Archive</h3>
+        <button id="news-history-close" class="btn-icon">✕</button>
+      </div>
+      <div id="news-history-content"></div>
     </div>
   </div>
 
@@ -253,6 +279,13 @@ export class Renderer {
     document.getElementById('intel-overlay')!.addEventListener('click', (e) => {
       if (e.target === document.getElementById('intel-overlay')) this.hideIntelModal();
     });
+    document.getElementById('btn-news-history')!.addEventListener('click', () => {
+      if (this.storedNewsSystem) this.showNewsHistory(this.storedNewsSystem);
+    });
+    document.getElementById('news-history-close')!.addEventListener('click', () => this.hideNewsHistory());
+    document.getElementById('news-history-overlay')!.addEventListener('click', (e) => {
+      if (e.target === document.getElementById('news-history-overlay')) this.hideNewsHistory();
+    });
     document.getElementById('btn-dark')!.addEventListener('click', () => this.callbacks.onDarkModeToggle());
     document.getElementById('btn-skip-day')!.addEventListener('click', () => this.callbacks.onSkipDay());
     document.getElementById('btn-prestige')!.addEventListener('click', () => this.callbacks.onPrestige());
@@ -265,6 +298,7 @@ export class Renderer {
         this.hideInsightPanel();
         this.hideIntelModal();
         this.hideModal();
+        this.hideNewsHistory();
       }
     });
   }
@@ -272,7 +306,13 @@ export class Renderer {
   private startTicker(): void {
     const el = document.getElementById('ticker-text')!;
     const next = () => {
-      el.textContent = NEWS_HEADLINES[this.tickerIndex % NEWS_HEADLINES.length];
+      const liveHeadlines = this.storedNewsSystem
+        ? this.storedNewsSystem.getActive().map(n => `📰 ${n.targetEmoji} ${n.targetName}: "${n.headline}"`)
+        : [];
+      const pool = liveHeadlines.length > 0
+        ? [...liveHeadlines, NEWS_HEADLINES[this.tickerIndex % NEWS_HEADLINES.length]]
+        : NEWS_HEADLINES;
+      el.textContent = pool[this.tickerIndex % pool.length];
       this.tickerIndex++;
     };
     next();
@@ -520,54 +560,91 @@ export class Renderer {
   ): void {
     const container = document.getElementById('news-list')!;
     const countEl   = document.getElementById('news-active-count')!;
+    const histBtn   = document.getElementById('btn-news-history')!;
 
     if (!newsSystem) return;
+    this.storedNewsSystem = newsSystem;
 
     const active = newsSystem.getActive();
-    countEl.textContent = active.length === 0
-      ? '0 pending'
-      : `${active.length} pending`;
+    countEl.textContent = active.length === 0 ? '0 pending' : `${active.length} pending`;
+    histBtn.classList.toggle('hidden', newsSystem.getAll().length === 0);
 
-    if (active.length === 0) {
-      container.innerHTML = '<p class="empty-msg">No active news. Check back later...</p>';
-      return;
-    }
-
-    // Sort by triggerDay ascending (soonest first)
     const sorted = [...active].sort((a, b) => a.triggerDay - b.triggerDay);
+    const newKey = sorted.map(n => n.id).join('|');
 
-    container.innerHTML = '';
-    for (const item of sorted) {
-      const daysLeft     = item.triggerDay - day;
-      const secsLeft     = Math.max(0, (daysLeft - 1) * secondsPerDay + (secondsPerDay - secondsInDay));
-      const mm           = Math.floor(secsLeft / 60);
-      const ss           = secsLeft % 60;
-      const timeStr      = `${mm}:${ss.toString().padStart(2, '0')}`;
-      const dayLabel     = daysLeft <= 1 ? 'today' : `${daysLeft} days`;
+    if (newKey !== this.newsActiveKey) {
+      // Structural change — rebuild DOM
+      this.newsActiveKey = newKey;
+      container.innerHTML = '';
+      if (active.length === 0) {
+        container.innerHTML = '<p class="empty-msg">No active news. Check back later...</p>';
+      } else {
+        for (const item of sorted) {
+          const card = this.buildNewsCard(item, day, secondsInDay, secondsPerDay);
+          container.appendChild(card);
+          requestAnimationFrame(() => requestAnimationFrame(() => card.classList.remove('news-enter')));
+        }
+      }
+    } else {
+      // Fast path — only update countdowns in-place
+      const cards = container.querySelectorAll<HTMLElement>('.news-item[data-news-id]');
+      cards.forEach((card, i) => {
+        if (sorted[i]) this.refreshNewsCountdown(card, sorted[i], day, secondsInDay, secondsPerDay);
+      });
+    }
+  }
 
-      const imminent = daysLeft <= 1 && secsLeft <= 15;
-      const urgent   = daysLeft <= 1 && !imminent;
-      const warning  = daysLeft === 2;
-      const urgencyCls = imminent ? 'news-imminent' : urgent ? 'news-urgent' : warning ? 'news-warning' : '';
+  private buildNewsCard(item: NewsItem, day: number, secondsInDay: number, secondsPerDay: number): HTMLElement {
+    const typeInfo   = NEWS_TYPE_INFO[item.type] ?? { icon: '📰', label: 'NEWS', cls: 'nt-default' };
+    const daysLeft   = item.triggerDay - day;
+    const secsLeft   = Math.max(0, (daysLeft - 1) * secondsPerDay + (secondsPerDay - secondsInDay));
+    const mm         = Math.floor(secsLeft / 60);
+    const ss         = secsLeft % 60;
+    const timeStr    = `${mm}:${ss.toString().padStart(2, '0')}`;
+    const dayLabel   = daysLeft <= 1 ? 'today' : `${daysLeft} days`;
+    const imminent   = daysLeft <= 1 && secsLeft <= 15;
+    const urgent     = daysLeft <= 1 && !imminent;
+    const warning    = daysLeft === 2;
+    const urgencyCls = imminent ? 'news-imminent' : urgent ? 'news-urgent' : warning ? 'news-warning' : '';
+    const successPct = Math.round(item.successChance * 100);
 
-      const successPct = Math.round(item.successChance * 100);
-      const isUpNews   = item.successMult >= 1;  // bullish news if success is good
-      const sentimentCls  = isUpNews ? 'news-bull' : 'news-bear';
-      const sentimentIcon = isUpNews ? '📈' : '📉';
+    const el = createEl('div', `news-item news-enter ${urgencyCls}`);
+    el.dataset.newsId = item.id;
+    el.innerHTML = `
+      <div class="news-top-row">
+        <span class="news-type-badge ${typeInfo.cls}">${typeInfo.icon} ${typeInfo.label}</span>
+        <span class="news-headline">${item.headline}</span>
+      </div>
+      <div class="news-meta-row">
+        <span class="news-target">${item.targetEmoji} ${item.targetName}</span>
+        <span class="news-chance ${successPct >= 60 ? 'chance-high' : successPct >= 50 ? 'chance-med' : 'chance-low'}">${successPct}% success</span>
+      </div>
+      <div class="news-countdown ${urgencyCls}" data-countdown>⏳ ${dayLabel} (${timeStr})</div>
+    `;
+    return el;
+  }
 
-      const el = createEl('div', `news-item ${urgencyCls}`);
-      el.innerHTML = `
-        <div class="news-top-row">
-          <span class="news-sentiment ${sentimentCls}">${sentimentIcon}</span>
-          <span class="news-headline">${item.headline}</span>
-        </div>
-        <div class="news-meta-row">
-          <span class="news-target">${item.targetEmoji} ${item.targetName}</span>
-          <span class="news-chance ${successPct >= 60 ? 'chance-high' : successPct >= 50 ? 'chance-med' : 'chance-low'}">${successPct}% success</span>
-        </div>
-        <div class="news-countdown ${urgencyCls}">⏳ ${dayLabel} (${timeStr})</div>
-      `;
-      container.appendChild(el);
+  private refreshNewsCountdown(el: HTMLElement, item: NewsItem, day: number, secondsInDay: number, secondsPerDay: number): void {
+    const daysLeft   = item.triggerDay - day;
+    const secsLeft   = Math.max(0, (daysLeft - 1) * secondsPerDay + (secondsPerDay - secondsInDay));
+    const mm         = Math.floor(secsLeft / 60);
+    const ss         = secsLeft % 60;
+    const timeStr    = `${mm}:${ss.toString().padStart(2, '0')}`;
+    const dayLabel   = daysLeft <= 1 ? 'today' : `${daysLeft} days`;
+    const imminent   = daysLeft <= 1 && secsLeft <= 15;
+    const urgent     = daysLeft <= 1 && !imminent;
+    const warning    = daysLeft === 2;
+    const urgencyCls = imminent ? 'news-imminent' : urgent ? 'news-urgent' : warning ? 'news-warning' : '';
+
+    // Only update urgency class if it changed
+    const baseClass = `news-item ${urgencyCls}`;
+    if (el.className !== baseClass) el.className = baseClass;
+    el.dataset.newsId = item.id;
+
+    const cdEl = el.querySelector<HTMLElement>('[data-countdown]');
+    if (cdEl) {
+      cdEl.textContent = `⏳ ${dayLabel} (${timeStr})`;
+      cdEl.className = `news-countdown ${urgencyCls}`;
     }
   }
 
@@ -899,6 +976,59 @@ export class Renderer {
 
   hideIntelModal(): void {
     document.getElementById('intel-overlay')!.classList.add('hidden');
+  }
+
+  // ── News history modal ────────────────────────────────────────────────────
+
+  showNewsHistory(newsSystem: NewsSystem): void {
+    const overlay = document.getElementById('news-history-overlay')!;
+    const content = document.getElementById('news-history-content')!;
+    overlay.classList.remove('hidden');
+    content.innerHTML = '';
+
+    const all = newsSystem.getAll();
+    if (all.length === 0) {
+      content.innerHTML = '<p class="empty-msg">No news history yet.</p>';
+      return;
+    }
+
+    const active   = all.filter(n => !n.resolved);
+    const resolved = all.filter(n => n.resolved);
+
+    if (active.length) {
+      content.appendChild(createEl('div', 'nh-section-label', `📡 Active (${active.length})`));
+      for (const item of [...active].sort((a, b) => a.triggerDay - b.triggerDay))
+        content.appendChild(this.buildHistoryItem(item));
+    }
+    if (resolved.length) {
+      content.appendChild(createEl('div', 'nh-section-label', `📁 Resolved (${resolved.length})`));
+      for (const item of [...resolved].reverse())
+        content.appendChild(this.buildHistoryItem(item));
+    }
+  }
+
+  private buildHistoryItem(item: NewsItem): HTMLElement {
+    const typeInfo  = NEWS_TYPE_INFO[item.type] ?? { icon: '📰', label: 'NEWS', cls: 'nt-default' };
+    const statusCls = !item.resolved ? '' : item.resolvedSuccess ? 'nh-success' : 'nh-fail';
+    const statusIcon = !item.resolved ? '⏳' : item.resolvedSuccess ? '✅' : '❌';
+
+    const el = createEl('div', `nh-item ${statusCls}`);
+    el.innerHTML = `
+      <div class="nh-top">
+        <span class="news-type-badge ${typeInfo.cls}">${typeInfo.icon} ${typeInfo.label}</span>
+        <span class="nh-status">${statusIcon}</span>
+        <span class="nh-headline">${item.headline}</span>
+      </div>
+      <div class="nh-meta">
+        <span class="nh-target">${item.targetEmoji} ${item.targetName}</span>
+        ${item.resolvedMessage ? `<span class="nh-resolved-msg">${item.resolvedMessage}</span>` : ''}
+      </div>
+    `;
+    return el;
+  }
+
+  hideNewsHistory(): void {
+    document.getElementById('news-history-overlay')!.classList.add('hidden');
   }
 
   // ── Toasts ────────────────────────────────────────────────────────────────
