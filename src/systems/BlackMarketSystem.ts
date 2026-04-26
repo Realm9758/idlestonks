@@ -23,6 +23,12 @@ export interface BmCallResult {
   message: string;
 }
 
+export interface CallMods {
+  trustBonus: number;
+  amountMult: number;
+  extraHeat: number;
+}
+
 export interface BmConsequence {
   type: 'fine' | 'lock' | 'reputation';
   fineAmount?: number;
@@ -68,6 +74,7 @@ export class BlackMarketSystem {
   rugPullCount = 0;
 
   private _customers: BmCustomer[];
+  private _activeCallId: string | null = null;
 
   constructor() {
     this._customers = CUSTOMER_TEMPLATES.map(t => ({ ...t, invested: 0, suspicious: false, callCount: 0 }));
@@ -77,6 +84,67 @@ export class BlackMarketSystem {
 
   canCall(): boolean {
     return !this.isLocked && this.callCooldownSecs <= 0 && this.callsToday < this.MAX_CALLS_PER_DAY;
+  }
+
+  // Phase 1: consume the call slot, get customer info for the conversation UI
+  beginCallSession(id: string): BmCustomer | null {
+    if (!this.canCall()) return null;
+    const c = this._customers.find(x => x.id === id);
+    if (!c || c.money <= 0) return null;
+    this.callCooldownSecs = this.CALL_COOLDOWN;
+    this.callsToday++;
+    c.callCount++;
+    this._activeCallId = id;
+    return c;
+  }
+
+  // Phase 2: resolve the conversation with accumulated modifiers
+  resolveCallSession(mods: CallMods): BmCallResult | null {
+    if (!this._activeCallId) return null;
+    const id = this._activeCallId;
+    this._activeCallId = null;
+    const c = this._customers.find(x => x.id === id);
+    if (!c) return null;
+
+    const effectiveTrust = Math.min(0.97,
+      c.trust * this.reputation * (c.suspicious ? 0.45 : 1.0) + mods.trustBonus,
+    );
+    const effectiveAwareness = Math.min(0.95, c.awareness + c.callCount * 0.04);
+    const roll = Math.random();
+
+    if (roll < effectiveAwareness * 0.35) {
+      c.suspicious = true;
+      this.riskLevel = Math.min(100, this.riskLevel + 10 + mods.extraHeat);
+      return { outcome: 'suspicious', amount: 0, message: `${c.name} smells something fishy... 👃` };
+    }
+
+    if (roll < effectiveTrust) {
+      const big   = roll < effectiveTrust * 0.5;
+      const base  = big ? 0.15 + Math.random() * 0.25 : 0.04 + Math.random() * 0.10;
+      const pct   = base * Math.max(0.5, mods.amountMult);
+      const amount = Math.round(Math.min(c.money, c.money * pct));
+      const outcome: BmCallResult['outcome'] = big ? 'invested' : 'partial';
+
+      c.money              -= amount;
+      c.invested           += amount;
+      this.stock.totalInvested += amount;
+      this.stock.price      = Math.max(0.01, this.stock.price * (1 + amount / 6000));
+      this.stock.hype       = Math.min(1, this.stock.hype + 0.08);
+      this.riskLevel        = Math.min(100, this.riskLevel + Math.round(c.awareness * 18) + mods.extraHeat);
+
+      const msg = outcome === 'invested'
+        ? `${c.name} bought in for $${amount.toLocaleString()}! 🤑`
+        : `${c.name} put in a little — $${amount.toLocaleString()}`;
+      return { outcome, amount, message: msg };
+    }
+
+    this.riskLevel = Math.min(100, this.riskLevel + mods.extraHeat);
+    return { outcome: 'fail', amount: 0, message: `${c.name} passed. 📵` };
+  }
+
+  // Cancel an active call session (cooldown already running)
+  hangUp(): void {
+    this._activeCallId = null;
   }
 
   callCustomer(id: string): BmCallResult | null {
