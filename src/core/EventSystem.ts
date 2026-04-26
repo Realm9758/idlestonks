@@ -16,104 +16,262 @@ interface GameEvent {
   apply: (market: Market, player: Player) => { message: string; severity: EventSeverity };
 }
 
+// ── Stat-aware events ────────────────────────────────────────────────────────
+//
+// Core patterns players can learn:
+//  • High hype  → viral events pump harder; scandal events crash harder
+//  • High stab  → resists market crashes
+//  • High risk  → extreme shocks more likely (both ways)
+//  • Hype decays → buy after viral spike, wait for next cycle
+
 const EVENTS: GameEvent[] = [
+  // ── Hype-driven events ───────────────────────────────────────────────────
+
   {
     id: 'cat_viral',
     weight: 10,
     apply: (market) => {
-      market.getAsset('catcoin')?.shock(3.0);
-      return { message: '🚀 Cat meme goes viral! CatCoin PUMPED +200%', severity: 'good' };
+      const asset = market.getAsset('catcoin');
+      if (!asset) return { message: '🐱 Cat meme fizzled. Nobody cared.', severity: 'neutral' };
+      // Pump scales with existing hype — high hype = momentum behind the pump
+      const mult = 1.8 + asset.hype * 1.5;
+      const prevHype = asset.hype;
+      asset.hype = Math.min(1, asset.hype + 0.45);
+      asset.shock(mult);
+      const tag = prevHype > 0.6 ? 'PEAK HYPE — maximum pump' : 'Hype rising';
+      return { message: `🚀 Cat meme goes viral! ${tag} +${((mult - 1) * 100).toFixed(0)}%`, severity: 'good' };
     },
   },
+
   {
-    id: 'ai_scandal',
+    id: 'influencer_scandal',
+    weight: 9,
+    apply: (market) => {
+      const asset = market.getAsset('influencer_stock');
+      if (!asset) return { message: '📸 Scandal contained. Somehow.', severity: 'neutral' };
+      // Higher hype = harder crash when it collapses
+      const prevHype = asset.hype;
+      const crashMult = Math.max(0.05, 0.4 - prevHype * 0.35);
+      asset.hype *= 0.04; // hype collapses
+      asset.shock(crashMult);
+      const tag = prevHype > 0.6 ? 'Hype collapse — BRUTAL' : 'Scandal hits';
+      return { message: `😬 Influencer caught faking it! ${tag} -${((1 - crashMult) * 100).toFixed(0)}%`, severity: 'bad' };
+    },
+  },
+
+  {
+    id: 'meme_lord_awakens',
+    weight: 5,
+    apply: (market) => {
+      // All high-hype stocks get a pump proportional to their hype
+      let biggest = '';
+      let biggestGain = 0;
+      for (const asset of market.getUnlockedAssets()) {
+        if (asset.hype > 0.3) {
+          const mult = 1.2 + asset.hype * 0.8;
+          asset.hype = Math.min(1, asset.hype + 0.2);
+          asset.shock(mult);
+          if (mult > biggestGain) { biggestGain = mult; biggest = asset.name; }
+        }
+      }
+      return { message: `😤 Meme lord awakens! High-hype assets pump. ${biggest} leads the charge.`, severity: 'good' };
+    },
+  },
+
+  {
+    id: 'hype_crash',
+    weight: 7,
+    apply: (market) => {
+      // The internet gets bored — high-hype stocks crash, hype collapses
+      let worst = '';
+      let worstCrash = 1;
+      for (const asset of market.getUnlockedAssets()) {
+        if (asset.hype > 0.4) {
+          const crashMult = Math.max(0.2, 0.7 - asset.hype * 0.5);
+          asset.shock(crashMult);
+          asset.hype *= 0.15;
+          if (crashMult < worstCrash) { worstCrash = crashMult; worst = asset.name; }
+        }
+      }
+      const tag = worst ? `${worst} worst hit.` : 'Low-hype market saved itself.';
+      return { message: `📉 Internet gets bored. Hype assets dump. ${tag}`, severity: 'bad' };
+    },
+  },
+
+  // ── Stability-tested events ──────────────────────────────────────────────
+
+  {
+    id: 'market_crash',
+    weight: 2,
+    apply: (market) => {
+      for (const asset of market.getUnlockedAssets()) {
+        // Stable assets barely feel it; fragile ones crater
+        const crashFloor = 0.15 + asset.stability * 0.50;
+        asset.shock(crashFloor);
+        asset.hype *= 0.35;
+      }
+      return { message: '☠️ MARKET CRASH! Stable assets held. Fragile ones wrecked. F in chat.', severity: 'bad' };
+    },
+  },
+
+  {
+    id: 'regulation_crackdown',
+    weight: 4,
+    apply: (market) => {
+      for (const asset of market.getUnlockedAssets()) {
+        // High-stability assets benefit (legitimised), high-risk crash
+        if (asset.stability > 0.5) {
+          asset.shock(1.1 + asset.stability * 0.3);
+        } else if (asset.risk > 0.6) {
+          asset.shock(Math.max(0.2, 0.5 - asset.risk * 0.3));
+        }
+      }
+      return { message: '🏛️ Government regulation wave! Stable assets gained. High-risk assets hammered.', severity: 'chaos' };
+    },
+  },
+
+  {
+    id: 'bull_run',
+    weight: 2,
+    apply: (market) => {
+      for (const asset of market.getUnlockedAssets()) {
+        const mult = 1.4 + Math.random() * 1.2;
+        asset.hype = Math.min(1, asset.hype + 0.3);
+        asset.shock(mult);
+      }
+      return { message: '🌕 BULL MARKET FRENZY! Everything pumping! Buy! BUY! BUY!', severity: 'good' };
+    },
+  },
+
+  // ── Risk-driven extreme events ───────────────────────────────────────────
+
+  {
+    id: 'banana_quantum_collapse',
     weight: 8,
     apply: (market) => {
-      market.getAsset('ai_writes_ai')?.shock(0.3);
-      return { message: '💀 AI startup exposed for making things up! AI Writes AI CRASHED -70%', severity: 'bad' };
+      const asset = market.getAsset('quantum_banana');
+      if (!asset) return { message: '🍌 Banana observation failed.', severity: 'neutral' };
+      // Risk = 0.8 → coin flip between moon and crash, with extreme magnitude
+      const goUp = Math.random() > 0.45;
+      const mult = goUp
+        ? 2.5 + Math.random() * 3.0
+        : 0.08 + Math.random() * 0.22;
+      asset.shock(mult);
+      return {
+        message: goUp
+          ? `🍌 Quantum Banana observed — RIPE! +${((mult - 1) * 100).toFixed(0)}%`
+          : `🍌 Quantum Banana observed — ROTTEN! -${((1 - mult) * 100).toFixed(0)}%`,
+        severity: goUp ? 'good' : 'bad',
+      };
     },
   },
+
+  {
+    id: 'rug_pull_scare',
+    weight: 7,
+    apply: (market) => {
+      const asset = market.getAsset('rug_pull');
+      if (!asset) return { message: '🪤 Rug pull target not found.', severity: 'neutral' };
+      // Risk-driven: high risk = massive crash
+      const crashMult = Math.max(0.04, 0.2 - asset.risk * 0.15);
+      asset.hype *= 0.1;
+      asset.shock(crashMult);
+      return { message: `🪤 Rug Pull devs spotted on a yacht! Token -${((1 - crashMult) * 100).toFixed(0)}%... probably fine`, severity: 'bad' };
+    },
+  },
+
+  {
+    id: 'nft_frenzy',
+    weight: 5,
+    apply: (market) => {
+      const asset = market.getAsset('nft_of_nft');
+      if (!asset) return { message: '🖼️ NFT market silent.', severity: 'neutral' };
+      const mult = 2.0 + asset.risk * 2.5; // high risk = bigger moonshot
+      asset.hype = Math.min(1, asset.hype + 0.5);
+      asset.shock(mult);
+      return { message: `🖼️ NFT art frenzy! High-risk moonshot +${((mult - 1) * 100).toFixed(0)}%`, severity: 'good' };
+    },
+  },
+
+  {
+    id: 'diamond_festival',
+    weight: 6,
+    apply: (market) => {
+      const asset = market.getAsset('diamond_hands');
+      if (!asset) return { message: '💎 DiamondHands convention cancelled.', severity: 'neutral' };
+      asset.hype = Math.min(1, asset.hype + 0.35);
+      asset.shock(2.2);
+      return { message: '💎 Annual DiamondHands convention! HODL culture peaks. +120%', severity: 'good' };
+    },
+  },
+
+  // ── Neutral / chaotic ────────────────────────────────────────────────────
+
   {
     id: 'market_confusion',
     weight: 6,
     apply: (market) => {
       for (const asset of market.getUnlockedAssets()) {
-        asset.shock(0.3 + Math.random() * 1.7);
+        // High-risk assets get more extreme randomisation
+        const range = 0.4 + asset.risk * 1.6;
+        asset.shock(0.3 + Math.random() * range);
       }
-      return { message: '🤯 Market confusion event! All prices randomised!', severity: 'chaos' };
+      return { message: '🤯 Market confusion! Everyone panics. Prices randomised by risk level.', severity: 'chaos' };
     },
   },
+
   {
-    id: 'banana_shortage',
+    id: 'ai_breakthrough',
+    weight: 6,
+    apply: (market) => {
+      const asset = market.getAsset('ai_writes_ai');
+      if (!asset) return { message: '🤖 AI too busy to respond.', severity: 'neutral' };
+      const mult = 1.5 + asset.stability * 0.8; // stable AI stock = reliable gains
+      asset.hype = Math.min(1, asset.hype + 0.4);
+      asset.shock(mult);
+      return { message: `🤖 AI tech breakthrough! AI Writes AI surges +${((mult - 1) * 100).toFixed(0)}% — stability paid off`, severity: 'good' };
+    },
+  },
+
+  {
+    id: 'ai_scandal',
     weight: 8,
     apply: (market) => {
-      market.getAsset('quantum_banana')?.shock(3.5);
-      return { message: '🍌 Global banana shortage! Quantum Banana SOARED +250%', severity: 'good' };
+      const asset = market.getAsset('ai_writes_ai');
+      if (!asset) return { message: '🤖 AI scandal unconfirmed.', severity: 'neutral' };
+      asset.hype *= 0.2;
+      asset.shock(0.3);
+      return { message: '💀 AI startup caught making everything up! AI Writes AI CRASHED -70%', severity: 'bad' };
     },
   },
-  {
-    id: 'influencer_scandal',
-    weight: 9,
-    apply: (market) => {
-      market.getAsset('influencer_stock')?.shock(0.15);
-      return { message: '😬 Influencer caught buying fake followers! Influencer Stock NUKED -85%', severity: 'bad' };
-    },
-  },
+
   {
     id: 'elon_tweets',
     weight: 7,
     apply: (market) => {
       const pump = Math.random() > 0.5;
-      const mult = pump ? 2.2 : 0.35;
+      const mult = pump ? 2.0 + Math.random() * 0.5 : 0.3 + Math.random() * 0.25;
       market.getAsset('catcoin')?.shock(mult);
       market.getAsset('doge_cousin')?.shock(mult);
+      if (pump) {
+        market.getAsset('catcoin')!.hype = Math.min(1, (market.getAsset('catcoin')!.hype) + 0.3);
+      }
       const dir = pump ? 'MOONED 🌕' : 'DUMPED ☠️';
       return { message: `🔥 Elon tweets a dog emoji! Dog-adjacent coins ${dir}`, severity: pump ? 'good' : 'bad' };
     },
   },
-  {
-    id: 'diamond_festival',
-    weight: 6,
-    apply: (market) => {
-      market.getAsset('diamond_hands')?.shock(2.5);
-      return { message: '💎 Annual DiamondHands convention! DiamondHandsCoin +150%', severity: 'good' };
-    },
-  },
-  {
-    id: 'rug_pull_scare',
-    weight: 7,
-    apply: (market) => {
-      market.getAsset('rug_pull')?.shock(0.08);
-      return { message: '🪤 Rug Pull Token devs spotted on a yacht! -92%... probably fine', severity: 'bad' };
-    },
-  },
+
   {
     id: 'hamster_wins',
     weight: 4,
     apply: (market) => {
       for (const asset of market.getUnlockedAssets()) {
-        asset.shock(1.1 + Math.random() * 0.4);
+        asset.shock(1.1 + Math.random() * 0.35);
       }
       return { message: '🐹 Prediction hamster wins another lottery! Market-wide boost!', severity: 'good' };
     },
   },
-  {
-    id: 'nft_frenzy',
-    weight: 5,
-    apply: (market) => {
-      market.getAsset('nft_of_nft')?.shock(4.0);
-      return { message: '🖼️ NFT art collector frenzy! NFT of an NFT EXPLODED +300%', severity: 'good' };
-    },
-  },
-  {
-    id: 'meme_recession',
-    weight: 6,
-    apply: (market) => {
-      market.getAsset('meme_etf')?.shock(0.4);
-      market.getAsset('catcoin')?.shock(0.7);
-      return { message: '📉 Internet gets bored. Meme recession begins. Cope.', severity: 'bad' };
-    },
-  },
+
   {
     id: 'free_money',
     weight: 4,
@@ -123,46 +281,7 @@ const EVENTS: GameEvent[] = [
       return { message: `💸 Government stimulus drop! You received $${amount}!`, severity: 'good' };
     },
   },
-  {
-    id: 'quantum_collapse',
-    weight: 5,
-    apply: (market) => {
-      const mult = 0.1 + Math.random() * 9;
-      market.getAsset('quantum_banana')?.shock(mult);
-      const dir = mult > 1 ? `+${((mult - 1) * 100).toFixed(0)}%` : `-${((1 - mult) * 100).toFixed(0)}%`;
-      return { message: `🌀 Quantum banana state collapsed! Price ${dir}. Schrödinger shrugs.`, severity: mult > 1 ? 'good' : 'bad' };
-    },
-  },
-  {
-    id: 'trend_boost',
-    weight: 3,
-    apply: (market) => {
-      for (const asset of market.getUnlockedAssets()) {
-        asset.trendBoost += 0.015;
-      }
-      return { message: '🏛️ "Stonks Only Up" bill signed into law! Market trend boosted!', severity: 'good' };
-    },
-  },
-  {
-    id: 'market_crash',
-    weight: 2,
-    apply: (market) => {
-      for (const asset of market.getUnlockedAssets()) {
-        asset.shock(0.15 + Math.random() * 0.35);
-      }
-      return { message: '☠️ MARKET CRASH! Everything dumped. Press F in chat.', severity: 'bad' };
-    },
-  },
-  {
-    id: 'bull_run',
-    weight: 2,
-    apply: (market) => {
-      for (const asset of market.getUnlockedAssets()) {
-        asset.shock(1.5 + Math.random() * 2.0);
-      }
-      return { message: '🌕 BULL MARKET FRENZY! Everything is pumping! Buy! BUY! BUY!', severity: 'good' };
-    },
-  },
+
   {
     id: 'tax_man',
     weight: 5,
@@ -172,25 +291,39 @@ const EVENTS: GameEvent[] = [
       return { message: `🧾 The tax man cometh. You owe $${loss}. No refunds.`, severity: 'bad' };
     },
   },
+
   {
     id: 'pump_scheme',
     weight: 4,
     apply: (market) => {
       const assets = market.getUnlockedAssets();
-      if (assets.length === 0) return { message: '📣 Pump scheme fizzles. Nobody had assets to pump.', severity: 'neutral' };
+      if (assets.length === 0) return { message: '📣 Pump scheme fizzled.', severity: 'neutral' };
       const target = assets[Math.floor(Math.random() * assets.length)];
-      target.shock(2.0 + Math.random() * 3.0);
-      return { message: `📣 Pump scheme targets ${target.emoji} ${target.name}! Price SURGES!`, severity: 'good' };
+      const mult = 1.8 + target.risk * 2.0; // risky assets = bigger pump (and eventual dump)
+      target.hype = Math.min(1, target.hype + 0.4);
+      target.shock(mult);
+      return { message: `📣 Pump scheme targets ${target.emoji} ${target.name}! +${((mult - 1) * 100).toFixed(0)}% — sell before the dump`, severity: 'good' };
+    },
+  },
+
+  {
+    id: 'trend_boost',
+    weight: 3,
+    apply: (market) => {
+      for (const asset of market.getUnlockedAssets()) {
+        asset.trendBoost += 0.015;
+      }
+      return { message: '🏛️ "Stonks Only Up" bill signed into law! All trends boosted!', severity: 'good' };
     },
   },
 ];
 
 function weightedRandom(events: GameEvent[]): GameEvent {
-  const totalWeight = events.reduce((s, e) => s + e.weight, 0);
-  let r = Math.random() * totalWeight;
-  for (const event of events) {
-    r -= event.weight;
-    if (r <= 0) return event;
+  const total = events.reduce((s, e) => s + e.weight, 0);
+  let r = Math.random() * total;
+  for (const e of events) {
+    r -= e.weight;
+    if (r <= 0) return e;
   }
   return events[events.length - 1];
 }
@@ -198,13 +331,12 @@ function weightedRandom(events: GameEvent[]): GameEvent {
 export class EventSystem {
   private log: EventLogEntry[];
   private nextEventIn: number;
-  private entryIdCounter: number;
+  private entryIdCounter = 0;
   private readonly maxLogEntries = 25;
 
   constructor() {
     this.log = [];
     this.nextEventIn = this.randomInterval();
-    this.entryIdCounter = 0;
   }
 
   private randomInterval(): number {

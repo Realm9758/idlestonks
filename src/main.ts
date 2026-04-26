@@ -5,6 +5,7 @@ import { UpgradeSystem } from './systems/UpgradeSystem.ts';
 import { SaveSystem } from './systems/SaveSystem.ts';
 import { IdleSystem } from './systems/IdleSystem.ts';
 import { Renderer } from './ui/render.ts';
+import { getTradeInsight } from './ui/components.ts';
 
 // ── Bootstrap ────────────────────────────────────────────────────────────────
 
@@ -14,12 +15,10 @@ const eventSystem = new EventSystem();
 const upgradeSystem = new UpgradeSystem();
 const saveSystem = new SaveSystem();
 
-// Load saved state
 const savedData = saveSystem.load();
 if (savedData) {
   saveSystem.applyLoad(savedData, player, market, upgradeSystem);
   market.checkUnlocks(player.getNetWorth(market));
-  // Re-apply volatility damper if purchased
   if (upgradeSystem.hasPurchased('volatility_damper')) {
     market.applyVolatilityDamper();
   }
@@ -29,15 +28,23 @@ if (savedData) {
 
 const renderer = new Renderer({
   onBuy(assetId, qty) {
+    const asset = market.getAsset(assetId);
     const result = player.buy(assetId, qty, market);
     renderer.showToast(result.message, result.success ? 'success' : 'error');
-    if (result.success) eventSystem.addEntry(result.message);
+    if (result.success && asset) {
+      eventSystem.addEntry(result.message);
+      renderer.showToast(getTradeInsight(asset, 'buy'), 'info');
+    }
   },
 
   onSell(assetId, qty) {
+    const asset = market.getAsset(assetId);
     const result = player.sell(assetId, qty, market);
     renderer.showToast(result.message, result.success ? 'success' : 'error');
-    if (result.success) eventSystem.addEntry(result.message);
+    if (result.success && asset) {
+      eventSystem.addEntry(result.message);
+      renderer.showToast(getTradeInsight(asset, 'sell'), 'info');
+    }
   },
 
   onBuyMax(assetId) {
@@ -47,7 +54,10 @@ const renderer = new Renderer({
     if (qty === 0) { renderer.showToast('Not enough cash!', 'error'); return; }
     const result = player.buy(assetId, qty, market);
     renderer.showToast(result.message, result.success ? 'success' : 'error');
-    if (result.success) eventSystem.addEntry(result.message);
+    if (result.success) {
+      eventSystem.addEntry(result.message);
+      renderer.showToast(getTradeInsight(asset, 'buy'), 'info');
+    }
   },
 
   onSellAll(assetId) {
@@ -55,7 +65,10 @@ const renderer = new Renderer({
     if (!asset || asset.owned === 0) { renderer.showToast('Nothing to sell!', 'error'); return; }
     const result = player.sell(assetId, asset.owned, market);
     renderer.showToast(result.message, result.success ? 'success' : 'error');
-    if (result.success) eventSystem.addEntry(result.message);
+    if (result.success) {
+      eventSystem.addEntry(result.message);
+      renderer.showToast(getTradeInsight(asset, 'sell'), 'info');
+    }
   },
 
   onYolo() {
@@ -92,11 +105,8 @@ const renderer = new Renderer({
     const result = upgradeSystem.buy(upgradeId, player.cash);
     renderer.showToast(result.message, result.success ? 'success' : 'error');
     if (!result.success) return;
-
     player.cash = result.newCash;
     eventSystem.addEntry(result.message, 'good');
-
-    // Apply immediate one-time effects
     if (upgradeId === 'volatility_damper') {
       market.applyVolatilityDamper();
     }
@@ -109,7 +119,7 @@ const renderer = new Renderer({
       renderer.showToast('Need $75,000 net worth to prestige!', 'error');
       return;
     }
-    if (!confirm(`Prestige? You lose all cash and assets but gain ×${upgradeSystem.getEarningsMultiplier() * 2} permanent earnings. Current: ${netWorth.toFixed(0)}`)) return;
+    if (!confirm(`Prestige? You lose all cash and assets but gain ×${upgradeSystem.getEarningsMultiplier() * 2} permanent earnings.`)) return;
 
     for (const asset of market.getAllAssets()) {
       asset.owned = 0;
@@ -138,6 +148,10 @@ const renderer = new Renderer({
   onShowManipulateModal() {
     renderer.showModal(market);
   },
+
+  onShowMarketIntel() {
+    renderer.showMarketIntel(market);
+  },
 });
 
 // ── Idle system ───────────────────────────────────────────────────────────────
@@ -161,5 +175,4 @@ const idleSystem = new IdleSystem(market, player, eventSystem, upgradeSystem, sa
 
 renderer.update(market, player, eventSystem, upgradeSystem, 0);
 idleSystem.start();
-
-eventSystem.addEntry('📈 IdleStonks launched. May the stonks be ever in your favour.', 'neutral');
+eventSystem.addEntry('📈 IdleStonks launched. Check 📊 Market Intel to plan your strategy.', 'neutral');

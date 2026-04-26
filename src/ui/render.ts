@@ -17,6 +17,7 @@ export interface RenderCallbacks {
   onDarkModeToggle: () => void;
   onClearSave: () => void;
   onShowManipulateModal: () => void;
+  onShowMarketIntel: () => void;
 }
 
 interface Toast {
@@ -39,8 +40,8 @@ const NEWS_HEADLINES = [
   'Influencer Stock gains after posting "authentic" sponsored content about authenticity',
   "Doge's Cousin discovers uncle Doge is actually a hedge fund manager",
   'Breaking: Market does market thing; analysts uncertain; more at 11',
-  'Government prints more money; Stonks Only Up engineers thrilled',
-  'Quantum Banana enters superposition; investors unsure whether to cry',
+  'High-hype assets pump; stability advocates insufferably smug',
+  'Prediction hamster declines to comment on Rug Pull Token',
 ];
 
 export class Renderer {
@@ -85,6 +86,7 @@ export class Renderer {
       </div>
     </div>
     <div class="header-actions">
+      <button id="btn-intel" class="btn btn-intel">📊 Market Intel</button>
       <button id="btn-dark" class="btn-icon" title="Toggle dark mode">🌙</button>
     </div>
   </header>
@@ -143,6 +145,7 @@ export class Renderer {
     </div>
   </footer>
 
+  <!-- Manipulate modal -->
   <div id="modal-overlay" class="hidden">
     <div id="modal">
       <div class="modal-header">
@@ -153,14 +156,33 @@ export class Renderer {
       <div id="modal-assets"></div>
     </div>
   </div>
+
+  <!-- Market Intel modal -->
+  <div id="intel-overlay" class="hidden">
+    <div id="intel-modal">
+      <div class="modal-header">
+        <div>
+          <h3>📊 Market Intel</h3>
+          <p class="modal-desc">Full intelligence on all assets — including locked ones. Plan ahead.</p>
+        </div>
+        <button id="intel-close" class="btn-icon">✕</button>
+      </div>
+      <div id="intel-content"></div>
+    </div>
+  </div>
 </div>`;
 
     document.getElementById('btn-yolo')!.addEventListener('click', () => this.callbacks.onYolo());
     document.getElementById('btn-stabilise')!.addEventListener('click', () => this.callbacks.onStabilise());
     document.getElementById('btn-manipulate')!.addEventListener('click', () => this.callbacks.onShowManipulateModal());
+    document.getElementById('btn-intel')!.addEventListener('click', () => this.callbacks.onShowMarketIntel());
     document.getElementById('modal-close')!.addEventListener('click', () => this.hideModal());
+    document.getElementById('intel-close')!.addEventListener('click', () => this.hideIntelModal());
     document.getElementById('modal-overlay')!.addEventListener('click', (e) => {
       if (e.target === document.getElementById('modal-overlay')) this.hideModal();
+    });
+    document.getElementById('intel-overlay')!.addEventListener('click', (e) => {
+      if (e.target === document.getElementById('intel-overlay')) this.hideIntelModal();
     });
     document.getElementById('btn-dark')!.addEventListener('click', () => this.callbacks.onDarkModeToggle());
     document.getElementById('btn-prestige')!.addEventListener('click', () => this.callbacks.onPrestige());
@@ -200,16 +222,12 @@ export class Renderer {
   // ── Header ───────────────────────────────────────────────────────────────
 
   private updateHeader(player: Player, market: Market, upgradeSystem: UpgradeSystem): void {
-    const cash = player.cash;
-    const netWorth = player.getNetWorth(market);
-    const portfolio = player.getPortfolioValue(market);
-
     const cashEl = document.getElementById('stat-cash')!;
-    cashEl.textContent = formatCurrency(cash);
-    cashEl.className = 'stat-value ' + (cash > 2000 ? 'green' : cash < 200 ? 'red' : '');
+    cashEl.textContent = formatCurrency(player.cash);
+    cashEl.className = 'stat-value ' + (player.cash > 2000 ? 'green' : player.cash < 200 ? 'red' : '');
 
-    document.getElementById('stat-networth')!.textContent = formatCurrency(netWorth);
-    document.getElementById('stat-portfolio')!.textContent = formatCurrency(portfolio);
+    document.getElementById('stat-networth')!.textContent = formatCurrency(player.getNetWorth(market));
+    document.getElementById('stat-portfolio')!.textContent = formatCurrency(player.getPortfolioValue(market));
 
     if (upgradeSystem.prestigeCount > 0) {
       document.getElementById('prestige-block')!.classList.remove('hidden');
@@ -221,17 +239,17 @@ export class Renderer {
 
   private updateMarket(market: Market, player: Player, upgradeSystem: UpgradeSystem): void {
     const container = document.getElementById('asset-list')!;
-    const unlockedAssets = market.getUnlockedAssets();
+    const unlocked = market.getUnlockedAssets();
 
-    if (unlockedAssets.length !== this.lastUnlockedCount) {
-      this.lastUnlockedCount = unlockedAssets.length;
+    if (unlocked.length !== this.lastUnlockedCount) {
+      this.lastUnlockedCount = unlocked.length;
       container.innerHTML = '';
-      for (const asset of unlockedAssets) {
+      for (const asset of unlocked) {
         container.appendChild(this.buildAssetRow(asset.id, asset.name, asset.emoji, asset.description));
       }
     }
 
-    for (const asset of unlockedAssets) {
+    for (const asset of unlocked) {
       const row = container.querySelector(`[data-id="${asset.id}"]`) as HTMLElement | null;
       if (!row) continue;
 
@@ -243,27 +261,37 @@ export class Renderer {
       changeEl.textContent = formatPct(pct);
       changeEl.className = 'asset-change ' + (pct >= 0 ? 'green' : 'red');
 
-      // Trend arrow (Insider AI upgrade)
+      // ── Stat badges ───────────────────────────────────────────────────
+      const setbadge = (sel: string, label: { icon: string; text: string; cls: string }) => {
+        const el = row.querySelector(sel) as HTMLElement | null;
+        if (el) {
+          el.textContent = `${label.icon} ${label.text}`;
+          el.className = `stat-badge ${label.cls}`;
+        }
+      };
+      setbadge('[data-stat="hype"]',      asset.getHypeLabel());
+      setbadge('[data-stat="momentum"]',  asset.getMomentumLabel());
+      setbadge('[data-stat="stability"]', asset.getStabilityLabel());
+      setbadge('[data-stat="risk"]',      asset.getRiskLabel());
+
+      // Insider AI trend arrows
       const trendEl = row.querySelector('.asset-trend') as HTMLElement | null;
       if (trendEl) {
         if (upgradeSystem.hasPurchased('insider_ai')) {
           trendEl.classList.remove('hidden');
-          const effectiveTrend = asset.trend + asset.trendBoost;
-          trendEl.textContent = effectiveTrend > 0.002 ? '▲▲' : effectiveTrend > 0 ? '▲' : effectiveTrend < -0.002 ? '▼▼' : '▼';
-          trendEl.className = 'asset-trend ' + (effectiveTrend >= 0 ? 'green' : 'red');
+          const t = asset.trend + asset.trendBoost;
+          trendEl.textContent = t > 0.003 ? '▲▲' : t > 0 ? '▲' : t < -0.003 ? '▼▼' : '▼';
+          trendEl.className = 'asset-trend ' + (t >= 0 ? 'green' : 'red');
         } else {
           trendEl.classList.add('hidden');
         }
       }
 
       const maxBuy = Math.floor(player.cash / asset.price);
-      const maxBuyBtn = row.querySelector('.btn-max') as HTMLButtonElement;
-      maxBuyBtn.textContent = `Max (${maxBuy})`;
-      maxBuyBtn.disabled = maxBuy === 0;
-
-      const sellAllBtn = row.querySelector('.btn-sell-all') as HTMLButtonElement;
-      sellAllBtn.textContent = `All (${asset.owned})`;
-      sellAllBtn.disabled = asset.owned === 0;
+      (row.querySelector('.btn-max') as HTMLButtonElement).textContent = `Max (${maxBuy})`;
+      (row.querySelector('.btn-max') as HTMLButtonElement).disabled = maxBuy === 0;
+      (row.querySelector('.btn-sell-all') as HTMLButtonElement).textContent = `All (${asset.owned})`;
+      (row.querySelector('.btn-sell-all') as HTMLButtonElement).disabled = asset.owned === 0;
 
       const ownedEl = row.querySelector('.asset-owned') as HTMLElement;
       ownedEl.textContent = asset.owned > 0 ? `Own: ${asset.owned}` : '';
@@ -283,6 +311,12 @@ export class Renderer {
           <span class="asset-owned"></span>
         </div>
         <div class="asset-desc">${description}</div>
+        <div class="asset-stats-row">
+          <span class="stat-badge sl-muted" data-stat="hype">😴 COLD</span>
+          <span class="stat-badge sl-neutral" data-stat="momentum">➡️ FLAT</span>
+          <span class="stat-badge sl-warn" data-stat="stability">⚠️ SHAKY</span>
+          <span class="stat-badge sl-warn" data-stat="risk">🟡 MEDIUM</span>
+        </div>
       </div>
       <div class="asset-price-col">
         <span class="asset-price">$0.00</span>
@@ -330,12 +364,14 @@ export class Renderer {
     container.innerHTML = '';
     for (const asset of owned) {
       const pct = asset.getPriceChangePct();
+      const mom = asset.getMomentumLabel();
       const row = createEl('div', 'portfolio-row');
       row.innerHTML = `
         <span class="p-name">${asset.emoji} ${asset.name}</span>
         <span class="p-qty">${asset.owned}×</span>
         <span class="p-value">${formatCurrency(asset.getValue())}</span>
         <span class="p-change ${pct >= 0 ? 'green' : 'red'}">${formatPct(pct)}</span>
+        <span class="stat-badge ${mom.cls} p-mom">${mom.icon} ${mom.text}</span>
       `;
       container.appendChild(row);
     }
@@ -359,10 +395,8 @@ export class Renderer {
     container.innerHTML = '';
     for (const entry of log) {
       const el = createEl('div', `event-entry sev-${entry.severity}`);
-      const msg = createEl('span', 'event-msg', entry.message);
-      const ts = createEl('span', 'event-time', timeAgo(entry.timestamp));
-      el.appendChild(msg);
-      el.appendChild(ts);
+      el.appendChild(createEl('span', 'event-msg', entry.message));
+      el.appendChild(createEl('span', 'event-time', timeAgo(entry.timestamp)));
       container.appendChild(el);
     }
   }
@@ -372,13 +406,11 @@ export class Renderer {
   private updateUpgrades(upgradeSystem: UpgradeSystem, player: Player, market: Market): void {
     const purchased = upgradeSystem.getPurchasedUpgrades();
 
-    // Rebuild DOM structure only when a new purchase happens
     if (purchased.length !== this.lastUpgradeCount) {
       this.lastUpgradeCount = purchased.length;
       this.buildUpgradeList(upgradeSystem);
     }
 
-    // Update button disabled state every tick as cash changes
     this.refreshUpgradeButtons(upgradeSystem, player, market);
 
     if (upgradeSystem.hasPurchased('prestige_chip')) {
@@ -408,13 +440,11 @@ export class Renderer {
             <span class="upg-name">${upg.emoji} ${upg.name}</span>
             <span class="upg-desc">${upg.description}</span>
           </div>
-          <button class="btn btn-buy-upg" data-upg-id="${upg.id}">
-            ${formatCurrency(upg.cost)}
-          </button>
+          <button class="btn btn-buy-upg" data-upg-id="${upg.id}">${formatCurrency(upg.cost)}</button>
         `;
         card.querySelector<HTMLButtonElement>('.btn-buy-upg')!.addEventListener('click', () => {
           this.callbacks.onBuyUpgrade(upg.id);
-          this.lastUpgradeCount = -1; // force rebuild on next tick
+          this.lastUpgradeCount = -1;
         });
         container.appendChild(card);
       }
@@ -430,9 +460,9 @@ export class Renderer {
       const upg = upgradeSystem.getAllUpgrades().find(u => u.id === id);
       if (!upg) continue;
 
-      const canAfford = player.cash >= upg.cost;
       const meetsThreshold = netWorth >= upg.unlockThreshold;
-      btn.disabled = !canAfford || !meetsThreshold;
+      const canAfford = player.cash >= upg.cost;
+      btn.disabled = !meetsThreshold || !canAfford;
 
       if (!meetsThreshold) {
         btn.textContent = `🔒 Need ${formatCurrency(upg.unlockThreshold)} NW`;
@@ -475,6 +505,83 @@ export class Renderer {
     document.getElementById('modal-overlay')!.classList.add('hidden');
   }
 
+  // ── Market Intel modal ───────────────────────────────────────────────────
+
+  showMarketIntel(market: Market): void {
+    const overlay = document.getElementById('intel-overlay')!;
+    const content = document.getElementById('intel-content')!;
+    overlay.classList.remove('hidden');
+    content.innerHTML = '';
+
+    const allAssets = market.getAllAssets();
+    const unlocked = allAssets.filter(a => a.isUnlocked);
+    const locked = allAssets.filter(a => !a.isUnlocked);
+
+    // ── Unlocked section ──────────────────────────────────────────────────
+    if (unlocked.length > 0) {
+      content.appendChild(createEl('div', 'intel-section-label', '🔓 Active Market'));
+      for (const asset of unlocked) {
+        content.appendChild(this.buildIntelRow(asset, false));
+      }
+    }
+
+    // ── Locked section ────────────────────────────────────────────────────
+    if (locked.length > 0) {
+      content.appendChild(createEl('div', 'intel-section-label', '🔒 Locked Assets — Intelligence Preview'));
+      for (const asset of locked) {
+        content.appendChild(this.buildIntelRow(asset, true));
+      }
+    }
+  }
+
+  private buildIntelRow(asset: ReturnType<Market['getAsset']> & object, isLocked: boolean): HTMLElement {
+    const hype = asset.getHypeLabel();
+    const mom  = asset.getMomentumLabel();
+    const stab = asset.getStabilityLabel();
+    const risk = asset.getRiskLabel();
+
+    const row = createEl('div', `intel-row${isLocked ? ' intel-locked' : ''}`);
+
+    // Price bar
+    const priceText = isLocked
+      ? `🔒 Unlocks at ${formatCurrency(asset.unlockThreshold)} NW`
+      : `${formatCurrency(asset.price)} <span class="${asset.getPriceChangePct() >= 0 ? 'green' : 'red'}">${formatPct(asset.getPriceChangePct())}</span>`;
+
+    // Strategy hint
+    let stratHint = '';
+    if (!isLocked) {
+      if (asset.hype > 0.6 && asset.momentum > 0.01) stratHint = '⚡ Momentum + Hype combo — high upside, watch for reversal';
+      else if (asset.stability > 0.65) stratHint = '🛡 Safe hold — good for stable growth strategy';
+      else if (asset.risk > 0.7 && asset.hype > 0.4) stratHint = '🎲 Degen play — explosive but expect shocks';
+      else if (asset.momentum < -0.01) stratHint = '📉 Falling — consider waiting for momentum to reverse';
+      else if (asset.hype > 0.5 && asset.momentum < 0) stratHint = '⚠️ Hype high but momentum falling — potential sell signal';
+      else stratHint = '➡️ Neutral — monitor for signal changes';
+    }
+
+    row.innerHTML = `
+      <div class="intel-asset-header">
+        <span class="intel-emoji">${asset.emoji}</span>
+        <div class="intel-asset-info">
+          <div class="intel-asset-name">${asset.name}</div>
+          <div class="intel-price">${priceText}</div>
+        </div>
+      </div>
+      <div class="intel-stats">
+        <span class="stat-badge ${hype.cls}"><span class="sl-label">HYPE</span> ${hype.icon} ${hype.text}</span>
+        <span class="stat-badge ${mom.cls}"><span class="sl-label">MOM</span> ${mom.icon} ${mom.text}</span>
+        <span class="stat-badge ${stab.cls}"><span class="sl-label">STAB</span> ${stab.icon} ${stab.text}</span>
+        <span class="stat-badge ${risk.cls}"><span class="sl-label">RISK</span> ${risk.icon} ${risk.text}</span>
+      </div>
+      <div class="intel-desc">${isLocked ? asset.getTeaserSignal() : stratHint}</div>
+    `;
+
+    return row;
+  }
+
+  hideIntelModal(): void {
+    document.getElementById('intel-overlay')!.classList.add('hidden');
+  }
+
   // ── Toasts ───────────────────────────────────────────────────────────────
 
   showToast(message: string, type: 'success' | 'error' | 'info' | 'chaos' = 'info'): void {
@@ -484,7 +591,6 @@ export class Renderer {
     area.appendChild(toast);
 
     requestAnimationFrame(() => toast.classList.add('visible'));
-
     this.toasts.push({ el: toast, removeAt: Date.now() + 3500 });
   }
 
