@@ -3,6 +3,7 @@ import type { Market } from '../core/Market.ts';
 import type { UpgradeSystem, UpgradeSaveData } from './UpgradeSystem.ts';
 import type { IdleSystem } from './IdleSystem.ts';
 import type { NewsSystem, NewsSaveState } from '../core/NewsSystem.ts';
+import type { RankSystem, RankSaveState } from './RankSystem.ts';
 
 interface SaveData {
   version: number;
@@ -17,6 +18,7 @@ interface SaveData {
   secondsInDay: number;
   nextEventInDays: number;
   news?: NewsSaveState;
+  rank?: RankSaveState;
 }
 
 const SAVE_KEY = 'idlestonks_v2';
@@ -28,18 +30,18 @@ export class SaveSystem {
 
   tick(
     player: Player, market: Market, upgradeSystem: UpgradeSystem,
-    idleSystem?: IdleSystem, newsSystem?: NewsSystem,
+    idleSystem?: IdleSystem, newsSystem?: NewsSystem, rankSystem?: RankSystem,
   ): void {
     this.ticksSinceLastSave++;
     if (this.ticksSinceLastSave >= this.saveEveryTicks) {
       this.ticksSinceLastSave = 0;
-      this.save(player, market, upgradeSystem, idleSystem, newsSystem);
+      this.save(player, market, upgradeSystem, idleSystem, newsSystem, rankSystem);
     }
   }
 
   save(
     player: Player, market: Market, upgradeSystem: UpgradeSystem,
-    idleSystem?: IdleSystem, newsSystem?: NewsSystem,
+    idleSystem?: IdleSystem, newsSystem?: NewsSystem, rankSystem?: RankSystem,
   ): void {
     const prices: Record<string, number> = {};
     const owned: Record<string, number> = {};
@@ -65,6 +67,7 @@ export class SaveSystem {
       secondsInDay: idleSystem?.getSecondsInDay() ?? 0,
       nextEventInDays: 3,
       news: newsSystem?.saveState(),
+      rank: rankSystem?.saveState(),
     };
 
     try {
@@ -88,7 +91,8 @@ export class SaveSystem {
 
   applyLoad(
     data: SaveData, player: Player, market: Market,
-    upgradeSystem: UpgradeSystem, idleSystem?: IdleSystem, newsSystem?: NewsSystem,
+    upgradeSystem: UpgradeSystem, idleSystem?: IdleSystem,
+    newsSystem?: NewsSystem, rankSystem?: RankSystem,
   ): void {
     player.cash = data.cash ?? 1000;
     player.totalEarned = data.totalEarned ?? 0;
@@ -98,9 +102,8 @@ export class SaveSystem {
     if (idleSystem) {
       idleSystem.loadDayState(data.day ?? 0, data.secondsInDay ?? 0, data.nextEventInDays ?? 3);
     }
-    if (newsSystem && data.news) {
-      newsSystem.loadState(data.news);
-    }
+    if (newsSystem && data.news) newsSystem.loadState(data.news);
+    if (rankSystem && data.rank) rankSystem.loadState(data.rank);
   }
 
   clearSave(): void {

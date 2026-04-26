@@ -4,6 +4,7 @@ import type { EventSystem, EventLogEntry } from '../core/EventSystem.ts';
 import type { NewsSystem, NewsItem, NewsResolution } from '../core/NewsSystem.ts';
 import type { UpgradeSystem } from './UpgradeSystem.ts';
 import type { SaveSystem } from './SaveSystem.ts';
+import type { RankSystem } from './RankSystem.ts';
 
 export interface IdleCallbacks {
   onTick: (tick: number, day: number, secondsInDay: number, secondsPerDay: number) => void;
@@ -30,6 +31,7 @@ export class IdleSystem {
     private readonly saveSystem: SaveSystem,
     private readonly callbacks: IdleCallbacks,
     private readonly newsSystem?: NewsSystem,
+    private readonly rankSystem?: RankSystem,
   ) {}
 
   start(): void {
@@ -81,7 +83,7 @@ export class IdleSystem {
     }
 
     // Auto-save every 5 ticks
-    this.saveSystem.tick(this.player, this.market, this.upgradeSystem, this, this.newsSystem);
+    this.saveSystem.tick(this.player, this.market, this.upgradeSystem, this, this.newsSystem, this.rankSystem);
 
     this.callbacks.onTick(this.tickCount, this.dayCount, this.secondsInDay, this.secondsPerDay);
   }

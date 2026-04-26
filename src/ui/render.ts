@@ -3,12 +3,13 @@ import type { Player } from '../core/Player.ts';
 import type { EventSystem, EventLogEntry } from '../core/EventSystem.ts';
 import type { NewsSystem, NewsItem } from '../core/NewsSystem.ts';
 import type { UpgradeSystem } from '../systems/UpgradeSystem.ts';
+import type { RankSystem, Rank } from '../systems/RankSystem.ts';
 import type { Asset } from '../core/Asset.ts';
 import {
   formatCurrency, formatPct, timeAgo, createEl,
   getInsightText, getMomentumArrow,
 } from './components.ts';
-import { flashPrice, spawnFloatingText, pulseElement } from './animations.ts';
+import { flashPrice, spawnFloatingText, pulseElement, sweepRow, spawnBuyParticles, spawnCashDelta } from './animations.ts';
 
 export interface RenderCallbacks {
   onBuy: (assetId: string, qty: number) => void;
@@ -64,9 +65,13 @@ export class Renderer {
 
   // Price flash: only trigger when change > 1%
   private lastPrices = new Map<string, number>();
+  private lastCash = -1;
 
   // Currently open insight panel asset
   private openInsightId: string | null = null;
+
+  // Rank system
+  private storedRankSystem: RankSystem | null = null;
 
   // News change-detection
   private newsActiveKey = '';
@@ -114,6 +119,16 @@ export class Renderer {
         <span class="stat-label">PORTFOLIO</span>
         <span id="stat-portfolio" class="stat-value">$0</span>
       </div>
+      <div class="stat-block rank-block">
+        <span class="stat-label">RANK</span>
+        <span id="stat-rank" class="stat-value rank-val">📊 Rookie Trader</span>
+        <div class="rank-progress-row">
+          <div class="rank-progress-wrap">
+            <div id="rank-progress-fill" class="rank-progress-fill" style="width:0%"></div>
+          </div>
+          <span id="rank-next-name" class="rank-next-label"></span>
+        </div>
+      </div>
       <div class="stat-block prestige-block hidden" id="prestige-block">
         <span class="stat-label">MULTIPLIER</span>
         <span id="stat-multiplier" class="stat-value gold">×1</span>
@@ -133,6 +148,12 @@ export class Renderer {
   <div id="toast-area"></div>
   <div id="event-popup-area"></div>
   <div id="screen-flash"></div>
+  <div id="rank-up-popup">
+    <div class="rankup-label">🎖 RANK UP</div>
+    <div id="rankup-emoji" class="rankup-emoji"></div>
+    <div id="rankup-name"  class="rankup-name"></div>
+    <div id="rankup-next"  class="rankup-next"></div>
+  </div>
 
   <div id="main-grid">
     <div id="market-panel" class="panel">
@@ -370,8 +391,10 @@ export class Renderer {
     secondsInDay = 0,
     secondsPerDay = 60,
     newsSystem?: NewsSystem,
+    rankSystem?: RankSystem,
   ): void {
     if (newsSystem) this.storedNewsSystem = newsSystem;
+    if (rankSystem) this.storedRankSystem = rankSystem;
     this.currentDay = day;
     this.currentSecInDay = secondsInDay;
     this.currentSecPerDay = secondsPerDay;
@@ -391,6 +414,12 @@ export class Renderer {
   private updateHeader(player: Player, market: Market, upgradeSystem: UpgradeSystem, day: number): void {
     document.getElementById('stat-day')!.textContent = String(day + 1);
     const cashEl = document.getElementById('stat-cash')!;
+    const newCash = player.cash;
+    if (this.lastCash >= 0) {
+      const delta = newCash - this.lastCash;
+      if (Math.abs(delta) >= 10) spawnCashDelta(cashEl, delta);
+    }
+    this.lastCash = newCash;
     cashEl.textContent = formatCurrency(player.cash);
     cashEl.className = 'stat-value ' + (player.cash > 2000 ? 'green' : player.cash < 200 ? 'red' : '');
     document.getElementById('stat-networth')!.textContent = formatCurrency(player.getNetWorth(market));
@@ -398,6 +427,15 @@ export class Renderer {
     if (upgradeSystem.prestigeCount > 0) {
       document.getElementById('prestige-block')!.classList.remove('hidden');
       document.getElementById('stat-multiplier')!.textContent = `×${upgradeSystem.getEarningsMultiplier()}`;
+    }
+    if (this.storedRankSystem) {
+      const nw = player.getNetWorth(market);
+      const rank = this.storedRankSystem.getDisplayRank(nw);
+      const { pct, nextRank } = this.storedRankSystem.getProgress(nw);
+      document.getElementById('stat-rank')!.textContent = `${rank.emoji} ${rank.name}`;
+      (document.getElementById('rank-progress-fill') as HTMLElement).style.width = `${pct.toFixed(1)}%`;
+      document.getElementById('rank-next-name')!.textContent =
+        nextRank ? `→ ${nextRank.name}` : '🏆 MAX';
     }
   }
 
@@ -423,6 +461,7 @@ export class Renderer {
       const delta = (asset.price - prev) / prev;
       if (Math.abs(delta) > 0.008) {
         flashPrice(priceEl, delta > 0 ? 'up' : 'down');
+        if (Math.abs(delta) > 0.02) sweepRow(row, delta > 0 ? 'up' : 'down');
         this.lastPrices.set(asset.id, asset.price);
       }
       priceEl.textContent = formatCurrency(asset.price);
@@ -448,6 +487,8 @@ export class Renderer {
       // ── Risk flicker + hype glow (CSS-driven, just toggle classes) ─────
       row.classList.toggle('risk-high', asset.risk > 0.68);
       row.classList.toggle('hype-high', asset.hype > 0.65);
+      row.classList.toggle('mom-trending-up',   asset.momentum > 0.015);
+      row.classList.toggle('mom-trending-down', asset.momentum < -0.015);
 
       // ── Insider AI arrows ──────────────────────────────────────────────
       const trendEl = row.querySelector('.asset-trend') as HTMLElement | null;
@@ -549,7 +590,9 @@ export class Renderer {
     row.querySelector('.btn-buy')!.addEventListener('click', () => {
       const qty = parseInt(qtyInput.value, 10);
       if (qty > 0) {
-        pulseElement(row.querySelector('.btn-buy') as HTMLElement);
+        const buyBtn = row.querySelector('.btn-buy') as HTMLElement;
+        pulseElement(buyBtn);
+        spawnBuyParticles(buyBtn);
         this.callbacks.onBuy(asset.id, qty);
       }
     });
@@ -675,6 +718,18 @@ export class Renderer {
     }
   }
 
+  private newsImpactLine(item: NewsItem): string {
+    const sDir = item.successMult >= 1
+      ? `+${((item.successMult - 1) * 100).toFixed(0)}%`
+      : `-${((1 - item.successMult) * 100).toFixed(0)}%`;
+    const fDir = item.failMult >= 1
+      ? `+${((item.failMult - 1) * 100).toFixed(0)}%`
+      : `-${((1 - item.failMult) * 100).toFixed(0)}%`;
+    const sCls = item.successMult >= 1 ? 'impact-bull' : 'impact-bear';
+    const fCls = item.failMult   >= 1 ? 'impact-bull' : 'impact-bear';
+    return `<div class="news-impact-row"><span class="news-impact-outcome ${sCls}">✅ ${sDir}</span><span class="news-impact-sep">·</span><span class="news-impact-outcome ${fCls}">❌ ${fDir}</span></div>`;
+  }
+
   private buildNewsCard(item: NewsItem, day: number, secondsInDay: number, secondsPerDay: number): HTMLElement {
     const typeInfo   = NEWS_TYPE_INFO[item.type] ?? { icon: '📰', label: 'NEWS', cls: 'nt-default' };
     const daysLeft   = item.triggerDay - day;
@@ -708,6 +763,7 @@ export class Renderer {
         <span class="news-target">${item.targetEmoji} ${item.targetName}</span>
         <span class="news-chance ${successPct >= 60 ? 'chance-high' : successPct >= 50 ? 'chance-med' : 'chance-low'}">${successPct}% success</span>
       </div>
+      ${this.newsImpactLine(item)}
       <div class="news-countdown ${urgencyCls}" data-countdown>⏳ ${dayLabel} (${timeStr})</div>
     `;
     return el;
@@ -955,6 +1011,27 @@ export class Renderer {
   private setIpFill(cls: string, pct: number): void {
     const el = document.querySelector(`.${cls}`) as HTMLElement | null;
     if (el) el.style.width = `${pct}%`;
+  }
+
+  // ── Rank-up popup ─────────────────────────────────────────────────────────
+
+  showRankUp(rank: Rank): void {
+    const popup = document.getElementById('rank-up-popup')!;
+    document.getElementById('rankup-emoji')!.textContent = rank.emoji;
+    document.getElementById('rankup-name')!.textContent  = rank.name;
+
+    const nextEl = document.getElementById('rankup-next')!;
+    if (this.storedRankSystem) {
+      const allRanks = this.storedRankSystem.getAllRanks();
+      const idx = allRanks.findIndex(r => r.id === rank.id);
+      nextEl.textContent = idx < allRanks.length - 1
+        ? `Next: ${allRanks[idx + 1].emoji} ${allRanks[idx + 1].name} at ${formatCurrency(allRanks[idx + 1].requiredNetWorth)} NW`
+        : '🏆 Maximum rank achieved!';
+    }
+
+    popup.classList.remove('visible');
+    requestAnimationFrame(() => requestAnimationFrame(() => popup.classList.add('visible')));
+    setTimeout(() => popup.classList.remove('visible'), 4000);
   }
 
   // ── Trade animation (float text + button pulse) ───────────────────────────

@@ -5,9 +5,10 @@ import { NewsSystem } from './core/NewsSystem.ts';
 import { UpgradeSystem } from './systems/UpgradeSystem.ts';
 import { SaveSystem } from './systems/SaveSystem.ts';
 import { IdleSystem } from './systems/IdleSystem.ts';
+import { RankSystem } from './systems/RankSystem.ts';
 import { Renderer } from './ui/render.ts';
 import { getTradeInsight } from './ui/components.ts';
-import { screenFlash } from './ui/animations.ts';
+import { screenFlash, screenShake } from './ui/animations.ts';
 
 // ── Bootstrap ────────────────────────────────────────────────────────────────
 
@@ -17,24 +18,31 @@ const eventSystem   = new EventSystem();
 const newsSystem    = new NewsSystem();
 const upgradeSystem = new UpgradeSystem();
 const saveSystem    = new SaveSystem();
+const rankSystem    = new RankSystem();
 
 // ── Idle system ───────────────────────────────────────────────────────────────
 // Created before renderer so save restoration can set day state before first render.
 
 const idleSystem = new IdleSystem(
   market, player, eventSystem, upgradeSystem, saveSystem,
-  {
+  { // callbacks
     onTick(tick, day, secondsInDay, secondsPerDay) {
-      renderer.update(market, player, eventSystem, upgradeSystem, tick, day, secondsInDay, secondsPerDay, newsSystem);
+      const { rankUp, newRank } = rankSystem.checkRankUp(player.getNetWorth(market));
+      if (rankUp && newRank) {
+        renderer.showRankUp(newRank);
+        screenFlash('good');
+        eventSystem.addEntry(`🎖 Rank up: ${newRank.name}!`, 'good');
+      }
+      renderer.update(market, player, eventSystem, upgradeSystem, tick, day, secondsInDay, secondsPerDay, newsSystem, rankSystem);
     },
 
     onEvent(entry) {
       const type = entry.severity === 'bad' ? 'error' : entry.severity === 'good' ? 'success' : 'chaos';
       renderer.showToast(entry.message, type);
       renderer.showEventPopup(entry);
-      if (entry.severity === 'bad') screenFlash('bad');
+      if (entry.severity === 'bad') { screenFlash('bad'); screenShake('light'); }
       else if (entry.severity === 'good') screenFlash('good');
-      else if (entry.severity === 'chaos') screenFlash('chaos');
+      else if (entry.severity === 'chaos') { screenFlash('chaos'); screenShake('heavy'); }
     },
 
     onUnlock(name) {
@@ -61,18 +69,19 @@ const idleSystem = new IdleSystem(
         message: resolution.message,
         severity: resolution.severity,
       });
-      if (resolution.severity === 'bad') screenFlash('bad');
+      if (resolution.severity === 'bad') { screenFlash('bad'); screenShake('light'); }
       else if (resolution.severity === 'good') screenFlash('good');
     },
   },
   newsSystem,
+  rankSystem,
 );
 
 // ── Restore save ──────────────────────────────────────────────────────────────
 
 const savedData = saveSystem.load();
 if (savedData) {
-  saveSystem.applyLoad(savedData, player, market, upgradeSystem, idleSystem, newsSystem);
+  saveSystem.applyLoad(savedData, player, market, upgradeSystem, idleSystem, newsSystem, rankSystem);
   market.checkUnlocks(player.getNetWorth(market));
   if (upgradeSystem.hasPurchased('volatility_damper')) market.applyVolatilityDamper();
   if (upgradeSystem.hasPurchased('time_warp')) idleSystem.applyTimeWarp();
@@ -194,7 +203,7 @@ const renderer = new Renderer({
 
     renderer.showToast(`⭐ PRESTIGE #${upgradeSystem.prestigeCount}! ${upgradeSystem.getEarningsMultiplier()}× multiplier active!`, 'success');
     eventSystem.addEntry(`⭐ PRESTIGE! The cycle begins anew with ×${upgradeSystem.getEarningsMultiplier()} multiplier.`, 'good');
-    saveSystem.save(player, market, upgradeSystem, idleSystem, newsSystem);
+    saveSystem.save(player, market, upgradeSystem, idleSystem, newsSystem, rankSystem);
   },
 
   onDarkModeToggle() {
@@ -232,7 +241,7 @@ document.addEventListener('open-insight', (e) => {
 renderer.update(
   market, player, eventSystem, upgradeSystem, 0,
   idleSystem.getDayCount(), idleSystem.getSecondsInDay(), idleSystem.getSecondsPerDay(),
-  newsSystem,
+  newsSystem, rankSystem,
 );
 idleSystem.start();
 eventSystem.addEntry('📈 IdleStonks launched. Events fire every 2–5 days. Watch 📰 Breaking News for timed opportunities.', 'neutral');
