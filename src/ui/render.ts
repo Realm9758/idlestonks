@@ -23,6 +23,7 @@ export interface RenderCallbacks {
   onClearSave: () => void;
   onShowManipulateModal: () => void;
   onShowMarketIntel: () => void;
+  onSkipDay: () => void;
 }
 
 interface Toast { el: HTMLElement; removeAt: number; }
@@ -132,8 +133,12 @@ export class Renderer {
       <div id="events-panel" class="panel">
         <div class="panel-header">
           <h2>📰 Events</h2>
-          <span id="next-event-badge" class="timer-badge hidden">⏱ --s</span>
+          <div class="event-timer-area">
+            <span id="next-event-badge" class="timer-badge">⏳ --</span>
+            <button id="btn-skip-day" class="btn btn-sm btn-skip-day" title="Skip to next day instantly">⏩ Skip Day <span class="cost-badge">$150</span></button>
+          </div>
         </div>
+        <div id="event-hint-bar" class="event-hint-bar hidden"></div>
         <div id="event-log"><p class="empty-msg">Waiting for chaos...</p></div>
       </div>
 
@@ -236,6 +241,7 @@ export class Renderer {
       if (e.target === document.getElementById('intel-overlay')) this.hideIntelModal();
     });
     document.getElementById('btn-dark')!.addEventListener('click', () => this.callbacks.onDarkModeToggle());
+    document.getElementById('btn-skip-day')!.addEventListener('click', () => this.callbacks.onSkipDay());
     document.getElementById('btn-prestige')!.addEventListener('click', () => this.callbacks.onPrestige());
     document.getElementById('btn-clear')!.addEventListener('click', () => {
       if (confirm('Reset ALL progress? This cannot be undone.')) this.callbacks.onClearSave();
@@ -268,13 +274,16 @@ export class Renderer {
     eventSystem: EventSystem,
     upgradeSystem: UpgradeSystem,
     tick: number,
+    day = 0,
+    secondsInDay = 0,
+    secondsPerDay = 60,
   ): void {
     this.updateHeader(player, market, upgradeSystem);
     this.updateMarket(market, player, upgradeSystem);
     this.updatePortfolio(market);
-    this.updateEvents(eventSystem, upgradeSystem);
+    this.updateEvents(eventSystem, upgradeSystem, day, secondsInDay, secondsPerDay);
     this.updateUpgrades(upgradeSystem, player, market);
-    this.updateFooter(player, tick);
+    this.updateFooter(player, tick, day);
     if (this.openInsightId) this.refreshInsightPanel(market);
     this.drainToasts();
   }
@@ -487,13 +496,49 @@ export class Renderer {
 
   // ── Events ────────────────────────────────────────────────────────────────
 
-  private updateEvents(eventSystem: EventSystem, upgradeSystem: UpgradeSystem): void {
-    const timerBadge = document.getElementById('next-event-badge')!;
+  private updateEvents(
+    eventSystem: EventSystem,
+    upgradeSystem: UpgradeSystem,
+    day: number,
+    secondsInDay: number,
+    secondsPerDay: number,
+  ): void {
+    const badge = document.getElementById('next-event-badge')!;
+    const hintBar = document.getElementById('event-hint-bar')!;
+    const skipBtn = document.getElementById('btn-skip-day') as HTMLButtonElement;
+
+    const nextDays = eventSystem.getNextEventInDays();
+    // Total seconds remaining until event fires
+    const secsRemaining = (nextDays - 1) * secondsPerDay + (secondsPerDay - secondsInDay);
+    const mm = Math.floor(secsRemaining / 60);
+    const ss = secsRemaining % 60;
+    const timeStr = `${mm}:${ss.toString().padStart(2, '0')}`;
+    const dayLabel = nextDays === 1 ? 'today' : `${nextDays} days`;
+    badge.textContent = `⏳ ${dayLabel} (${timeStr})`;
+
+    // Urgency classes
+    const imminent = nextDays === 1 && secsRemaining <= 15;
+    const soon     = nextDays <= 2 && !imminent;
+    badge.classList.toggle('event-imminent', imminent);
+    badge.classList.toggle('event-soon', soon && !imminent);
+    badge.classList.remove(imminent ? 'event-soon' : 'event-imminent');
+
+    // Skip day button disabled state
+    skipBtn.disabled = false;
+    skipBtn.title = 'Skip to next day instantly ($150)';
+
+    // Bloomberg hint bar
     if (upgradeSystem.hasPurchased('bloomberg')) {
-      timerBadge.classList.remove('hidden');
-      timerBadge.textContent = `⏱ ${eventSystem.getNextEventIn()}s`;
+      hintBar.classList.remove('hidden');
+      const hamster = upgradeSystem.hasPurchased('prediction_hamster');
+      const prefix = hamster ? '🐹 Hamster senses:' : '📰 Intel:';
+      hintBar.textContent = `${prefix} ${eventSystem.getHintText()}`;
+      hintBar.className = `event-hint-bar ${hamster ? 'hint-hamster' : 'hint-bloomberg'}`;
+    } else {
+      hintBar.classList.add('hidden');
     }
 
+    // ── Event log (only rebuild when new entry arrives) ────────────────────
     const log = eventSystem.getLog();
     if (log.length === 0 || log[0].id === this.lastLogId) return;
     this.lastLogId = log[0].id;
@@ -601,9 +646,9 @@ export class Renderer {
 
   // ── Footer ────────────────────────────────────────────────────────────────
 
-  private updateFooter(player: Player, tick: number): void {
+  private updateFooter(player: Player, tick: number, day: number): void {
     document.getElementById('footer-stats')!.textContent =
-      `Trades: ${player.tradeCount} · Tick: ${tick} · Earned: ${formatCurrency(player.totalEarned)}`;
+      `Day: ${day} · Trades: ${player.tradeCount} · Tick: ${tick} · Earned: ${formatCurrency(player.totalEarned)}`;
   }
 
   // ── Insight panel ─────────────────────────────────────────────────────────

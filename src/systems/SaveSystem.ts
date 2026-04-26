@@ -1,6 +1,7 @@
 import type { Player } from '../core/Player.ts';
 import type { Market } from '../core/Market.ts';
 import type { UpgradeSystem, UpgradeSaveData } from './UpgradeSystem.ts';
+import type { IdleSystem } from './IdleSystem.ts';
 
 interface SaveData {
   version: number;
@@ -11,6 +12,9 @@ interface SaveData {
   owned: Record<string, number>;
   upgrades: UpgradeSaveData;
   savedAt: number;
+  day: number;
+  secondsInDay: number;
+  nextEventInDays: number;
 }
 
 const SAVE_KEY = 'idlestonks_v1';
@@ -20,15 +24,15 @@ export class SaveSystem {
   private ticksSinceLastSave = 0;
   private readonly saveEveryTicks = 5;
 
-  tick(player: Player, market: Market, upgradeSystem: UpgradeSystem): void {
+  tick(player: Player, market: Market, upgradeSystem: UpgradeSystem, idleSystem?: IdleSystem): void {
     this.ticksSinceLastSave++;
     if (this.ticksSinceLastSave >= this.saveEveryTicks) {
       this.ticksSinceLastSave = 0;
-      this.save(player, market, upgradeSystem);
+      this.save(player, market, upgradeSystem, idleSystem);
     }
   }
 
-  save(player: Player, market: Market, upgradeSystem: UpgradeSystem): void {
+  save(player: Player, market: Market, upgradeSystem: UpgradeSystem, idleSystem?: IdleSystem): void {
     const prices: Record<string, number> = {};
     const owned: Record<string, number> = {};
 
@@ -49,6 +53,9 @@ export class SaveSystem {
         prestigeCount: upgradeSystem.prestigeCount,
       },
       savedAt: Date.now(),
+      day: idleSystem?.getDayCount() ?? 0,
+      secondsInDay: idleSystem?.getSecondsInDay() ?? 0,
+      nextEventInDays: 3,
     };
 
     try {
@@ -70,12 +77,15 @@ export class SaveSystem {
     }
   }
 
-  applyLoad(data: SaveData, player: Player, market: Market, upgradeSystem: UpgradeSystem): void {
+  applyLoad(data: SaveData, player: Player, market: Market, upgradeSystem: UpgradeSystem, idleSystem?: IdleSystem): void {
     player.cash = data.cash ?? 1000;
     player.totalEarned = data.totalEarned ?? 0;
     player.tradeCount = data.tradeCount ?? 0;
     market.loadPrices(data.prices ?? {}, data.owned ?? {});
     if (data.upgrades) upgradeSystem.load(data.upgrades);
+    if (idleSystem) {
+      idleSystem.loadDayState(data.day ?? 0, data.secondsInDay ?? 0, data.nextEventInDays ?? 3);
+    }
   }
 
   clearSave(): void {

@@ -5,14 +5,17 @@ import type { UpgradeSystem } from './UpgradeSystem.ts';
 import type { SaveSystem } from './SaveSystem.ts';
 
 export interface IdleCallbacks {
-  onTick: (tick: number) => void;
+  onTick: (tick: number, day: number, secondsInDay: number, secondsPerDay: number) => void;
   onEvent: (entry: EventLogEntry) => void;
   onUnlock: (name: string) => void;
 }
 
 export class IdleSystem {
-  private tickCount = 0;
-  private running = false;
+  private tickCount  = 0;
+  private dayCount   = 0;
+  private secondsInDay = 0;
+  private secondsPerDay = 60;
+  private running    = false;
   private intervalId: ReturnType<typeof setInterval> | null = null;
   private autoTraderTimer = 0;
 
@@ -41,14 +44,14 @@ export class IdleSystem {
 
   private step(): void {
     this.tickCount++;
+    this.secondsInDay++;
 
+    // ── Prices update every second ─────────────────────────────────────────
     this.market.tick();
 
     const netWorth = this.player.getNetWorth(this.market);
     const newlyUnlocked = this.market.checkUnlocks(netWorth);
-    for (const name of newlyUnlocked) {
-      this.callbacks.onUnlock(name);
-    }
+    for (const name of newlyUnlocked) this.callbacks.onUnlock(name);
 
     // Passive dividend income
     const bonus = this.upgradeSystem.applyPassiveIncome(this.player.getPortfolioValue(this.market));
@@ -66,16 +69,23 @@ export class IdleSystem {
       }
     }
 
-    // Chaos events
-    const eventEntry = this.eventSystem.tick(this.market, this.player);
-    if (eventEntry) {
-      this.callbacks.onEvent(eventEntry);
+    // ── Day boundary ───────────────────────────────────────────────────────
+    if (this.secondsInDay >= this.secondsPerDay) {
+      this.secondsInDay = 0;
+      this.dayCount++;
+      this.fireDayEvents();
     }
 
     // Auto-save every 5 ticks
-    this.saveSystem.tick(this.player, this.market, this.upgradeSystem);
+    this.saveSystem.tick(this.player, this.market, this.upgradeSystem, this);
 
-    this.callbacks.onTick(this.tickCount);
+    this.callbacks.onTick(this.tickCount, this.dayCount, this.secondsInDay, this.secondsPerDay);
+  }
+
+  private fireDayEvents(): void {
+    const hamster = this.upgradeSystem.hasPurchased('prediction_hamster');
+    const entry = this.eventSystem.dayTick(this.market, this.player, hamster);
+    if (entry) this.callbacks.onEvent(entry);
   }
 
   private runAutoTrader(): void {
@@ -83,14 +93,37 @@ export class IdleSystem {
     const affordable = this.market.getUnlockedAssets()
       .filter(a => a.price <= budget)
       .sort((a, b) => a.price - b.price);
-
-    if (affordable.length > 0) {
-      const target = affordable[0];
-      this.player.buy(target.id, 1, this.market);
-    }
+    if (affordable.length > 0) this.player.buy(affordable[0].id, 1, this.market);
   }
 
-  getTick(): number {
-    return this.tickCount;
+  // ── Time controls ──────────────────────────────────────────────────────
+
+  applyTimeWarp(): void {
+    this.secondsPerDay = 30;
+  }
+
+  // Immediately advance to the next day boundary. Returns false if player can't afford it.
+  skipToNextDay(): boolean {
+    const cost = 150;
+    if (this.player.cash < cost) return false;
+    this.player.cash -= cost;
+    this.secondsInDay = 0;
+    this.dayCount++;
+    this.fireDayEvents();
+    this.callbacks.onTick(this.tickCount, this.dayCount, this.secondsInDay, this.secondsPerDay);
+    return true;
+  }
+
+  // ── Accessors ──────────────────────────────────────────────────────────
+
+  getTick(): number        { return this.tickCount; }
+  getDayCount(): number    { return this.dayCount; }
+  getSecondsInDay(): number  { return this.secondsInDay; }
+  getSecondsPerDay(): number { return this.secondsPerDay; }
+
+  loadDayState(day: number, secondsInDay: number, nextEventInDays: number): void {
+    this.dayCount     = day ?? 0;
+    this.secondsInDay = secondsInDay ?? 0;
+    this.eventSystem.loadState({ nextEventInDays: nextEventInDays ?? 3 });
   }
 }

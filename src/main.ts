@@ -16,13 +16,36 @@ const eventSystem = new EventSystem();
 const upgradeSystem = new UpgradeSystem();
 const saveSystem = new SaveSystem();
 
+// ── Idle system (created before renderer so save can restore day state) ───────
+
+const idleSystem = new IdleSystem(market, player, eventSystem, upgradeSystem, saveSystem, {
+  onTick(tick, day, secondsInDay, secondsPerDay) {
+    renderer.update(market, player, eventSystem, upgradeSystem, tick, day, secondsInDay, secondsPerDay);
+  },
+
+  onEvent(entry) {
+    const type = entry.severity === 'bad' ? 'error' : entry.severity === 'good' ? 'success' : 'chaos';
+    renderer.showToast(entry.message, type);
+    renderer.showEventPopup(entry);
+    if (entry.severity === 'bad') screenFlash('bad');
+    else if (entry.severity === 'good') screenFlash('good');
+    else if (entry.severity === 'chaos') screenFlash('chaos');
+  },
+
+  onUnlock(name) {
+    renderer.showToast(`🔓 New asset unlocked: ${name}!`, 'success');
+    eventSystem.addEntry(`🔓 New asset unlocked: ${name}!`, 'good');
+  },
+});
+
+// ── Restore save ──────────────────────────────────────────────────────────────
+
 const savedData = saveSystem.load();
 if (savedData) {
-  saveSystem.applyLoad(savedData, player, market, upgradeSystem);
+  saveSystem.applyLoad(savedData, player, market, upgradeSystem, idleSystem);
   market.checkUnlocks(player.getNetWorth(market));
-  if (upgradeSystem.hasPurchased('volatility_damper')) {
-    market.applyVolatilityDamper();
-  }
+  if (upgradeSystem.hasPurchased('volatility_damper')) market.applyVolatilityDamper();
+  if (upgradeSystem.hasPurchased('time_warp')) idleSystem.applyTimeWarp();
 }
 
 // ── Renderer ──────────────────────────────────────────────────────────────────
@@ -113,8 +136,10 @@ const renderer = new Renderer({
     if (!result.success) return;
     player.cash = result.newCash;
     eventSystem.addEntry(result.message, 'good');
-    if (upgradeId === 'volatility_damper') {
-      market.applyVolatilityDamper();
+    if (upgradeId === 'volatility_damper') market.applyVolatilityDamper();
+    if (upgradeId === 'time_warp') {
+      idleSystem.applyTimeWarp();
+      renderer.showToast('⚡ Days now pass in 30 seconds!', 'info');
     }
   },
 
@@ -139,7 +164,7 @@ const renderer = new Renderer({
 
     renderer.showToast(`⭐ PRESTIGE #${upgradeSystem.prestigeCount}! ${upgradeSystem.getEarningsMultiplier()}× multiplier active!`, 'success');
     eventSystem.addEntry(`⭐ PRESTIGE! The cycle begins anew with ×${upgradeSystem.getEarningsMultiplier()} multiplier.`, 'good');
-    saveSystem.save(player, market, upgradeSystem);
+    saveSystem.save(player, market, upgradeSystem, idleSystem);
   },
 
   onDarkModeToggle() {
@@ -158,27 +183,11 @@ const renderer = new Renderer({
   onShowMarketIntel() {
     renderer.showMarketIntel(market);
   },
-});
 
-// ── Idle system ───────────────────────────────────────────────────────────────
-
-const idleSystem = new IdleSystem(market, player, eventSystem, upgradeSystem, saveSystem, {
-  onTick(tick) {
-    renderer.update(market, player, eventSystem, upgradeSystem, tick);
-  },
-
-  onEvent(entry) {
-    const type = entry.severity === 'bad' ? 'error' : entry.severity === 'good' ? 'success' : 'chaos';
-    renderer.showToast(entry.message, type);
-    renderer.showEventPopup(entry);
-    if (entry.severity === 'bad') screenFlash('bad');
-    else if (entry.severity === 'good') screenFlash('good');
-    else if (entry.severity === 'chaos') screenFlash('chaos');
-  },
-
-  onUnlock(name) {
-    renderer.showToast(`🔓 New asset unlocked: ${name}!`, 'success');
-    eventSystem.addEntry(`🔓 New asset unlocked: ${name}!`, 'good');
+  onSkipDay() {
+    const ok = idleSystem.skipToNextDay();
+    if (!ok) renderer.showToast('Need $150 to skip a day!', 'error');
+    else renderer.showToast('⏩ Day skipped!', 'info');
   },
 });
 
@@ -190,6 +199,9 @@ document.addEventListener('open-insight', (e) => {
 
 // ── Start ─────────────────────────────────────────────────────────────────────
 
-renderer.update(market, player, eventSystem, upgradeSystem, 0);
+renderer.update(
+  market, player, eventSystem, upgradeSystem, 0,
+  idleSystem.getDayCount(), idleSystem.getSecondsInDay(), idleSystem.getSecondsPerDay(),
+);
 idleSystem.start();
-eventSystem.addEntry('📈 IdleStonks launched. Check 📊 Market Intel to plan your strategy.', 'neutral');
+eventSystem.addEntry('📈 IdleStonks launched. Events fire every 2–5 days. Plan accordingly.', 'neutral');
