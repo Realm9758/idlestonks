@@ -1,6 +1,7 @@
 import { Market } from './core/Market.ts';
 import { Player } from './core/Player.ts';
 import { EventSystem } from './core/EventSystem.ts';
+import { NewsSystem } from './core/NewsSystem.ts';
 import { UpgradeSystem } from './systems/UpgradeSystem.ts';
 import { SaveSystem } from './systems/SaveSystem.ts';
 import { IdleSystem } from './systems/IdleSystem.ts';
@@ -10,39 +11,65 @@ import { screenFlash } from './ui/animations.ts';
 
 // ── Bootstrap ────────────────────────────────────────────────────────────────
 
-const market = new Market();
-const player = new Player();
-const eventSystem = new EventSystem();
+const market        = new Market();
+const player        = new Player();
+const eventSystem   = new EventSystem();
+const newsSystem    = new NewsSystem();
 const upgradeSystem = new UpgradeSystem();
-const saveSystem = new SaveSystem();
+const saveSystem    = new SaveSystem();
 
-// ── Idle system (created before renderer so save can restore day state) ───────
+// ── Idle system ───────────────────────────────────────────────────────────────
+// Created before renderer so save restoration can set day state before first render.
 
-const idleSystem = new IdleSystem(market, player, eventSystem, upgradeSystem, saveSystem, {
-  onTick(tick, day, secondsInDay, secondsPerDay) {
-    renderer.update(market, player, eventSystem, upgradeSystem, tick, day, secondsInDay, secondsPerDay);
+const idleSystem = new IdleSystem(
+  market, player, eventSystem, upgradeSystem, saveSystem,
+  {
+    onTick(tick, day, secondsInDay, secondsPerDay) {
+      renderer.update(market, player, eventSystem, upgradeSystem, tick, day, secondsInDay, secondsPerDay, newsSystem);
+    },
+
+    onEvent(entry) {
+      const type = entry.severity === 'bad' ? 'error' : entry.severity === 'good' ? 'success' : 'chaos';
+      renderer.showToast(entry.message, type);
+      renderer.showEventPopup(entry);
+      if (entry.severity === 'bad') screenFlash('bad');
+      else if (entry.severity === 'good') screenFlash('good');
+      else if (entry.severity === 'chaos') screenFlash('chaos');
+    },
+
+    onUnlock(name) {
+      renderer.showToast(`🔓 New asset unlocked: ${name}!`, 'success');
+      eventSystem.addEntry(`🔓 New asset unlocked: ${name}!`, 'good');
+    },
+
+    onNewsGenerated(item) {
+      renderer.showToast(
+        `📰 Breaking: "${item.headline}" — triggers in ${item.triggerDay - idleSystem.getDayCount()} day(s)`,
+        'info',
+      );
+    },
+
+    onNewsResolved(resolution) {
+      const type = resolution.severity === 'bad' ? 'error' : resolution.severity === 'good' ? 'success' : 'chaos';
+      renderer.showToast(resolution.message, type);
+      renderer.showEventPopup({
+        id: Date.now(),
+        timestamp: Date.now(),
+        message: resolution.message,
+        severity: resolution.severity,
+      });
+      if (resolution.severity === 'bad') screenFlash('bad');
+      else if (resolution.severity === 'good') screenFlash('good');
+    },
   },
-
-  onEvent(entry) {
-    const type = entry.severity === 'bad' ? 'error' : entry.severity === 'good' ? 'success' : 'chaos';
-    renderer.showToast(entry.message, type);
-    renderer.showEventPopup(entry);
-    if (entry.severity === 'bad') screenFlash('bad');
-    else if (entry.severity === 'good') screenFlash('good');
-    else if (entry.severity === 'chaos') screenFlash('chaos');
-  },
-
-  onUnlock(name) {
-    renderer.showToast(`🔓 New asset unlocked: ${name}!`, 'success');
-    eventSystem.addEntry(`🔓 New asset unlocked: ${name}!`, 'good');
-  },
-});
+  newsSystem,
+);
 
 // ── Restore save ──────────────────────────────────────────────────────────────
 
 const savedData = saveSystem.load();
 if (savedData) {
-  saveSystem.applyLoad(savedData, player, market, upgradeSystem, idleSystem);
+  saveSystem.applyLoad(savedData, player, market, upgradeSystem, idleSystem, newsSystem);
   market.checkUnlocks(player.getNetWorth(market));
   if (upgradeSystem.hasPurchased('volatility_damper')) market.applyVolatilityDamper();
   if (upgradeSystem.hasPurchased('time_warp')) idleSystem.applyTimeWarp();
@@ -164,7 +191,7 @@ const renderer = new Renderer({
 
     renderer.showToast(`⭐ PRESTIGE #${upgradeSystem.prestigeCount}! ${upgradeSystem.getEarningsMultiplier()}× multiplier active!`, 'success');
     eventSystem.addEntry(`⭐ PRESTIGE! The cycle begins anew with ×${upgradeSystem.getEarningsMultiplier()} multiplier.`, 'good');
-    saveSystem.save(player, market, upgradeSystem, idleSystem);
+    saveSystem.save(player, market, upgradeSystem, idleSystem, newsSystem);
   },
 
   onDarkModeToggle() {
@@ -202,6 +229,7 @@ document.addEventListener('open-insight', (e) => {
 renderer.update(
   market, player, eventSystem, upgradeSystem, 0,
   idleSystem.getDayCount(), idleSystem.getSecondsInDay(), idleSystem.getSecondsPerDay(),
+  newsSystem,
 );
 idleSystem.start();
-eventSystem.addEntry('📈 IdleStonks launched. Events fire every 2–5 days. Plan accordingly.', 'neutral');
+eventSystem.addEntry('📈 IdleStonks launched. Events fire every 2–5 days. Watch 📰 Breaking News for timed opportunities.', 'neutral');

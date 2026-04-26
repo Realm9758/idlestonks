@@ -775,6 +775,108 @@ body {
 /* ── Helper: muted colour ────────────────────────────────────────────────────── */
 .muted { color: var(--text-muted); }
 
+/* ── Day counter (header stat block) ────────────────────────────────────────── */
+#stat-day {
+  color: var(--blue);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── News panel ──────────────────────────────────────────────────────────────── */
+
+#news-list {
+  padding: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  max-height: 320px;
+  overflow-y: auto;
+}
+
+.news-item {
+  padding: 9px 11px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  transition: border-color 0.3s;
+}
+
+.news-item:hover { border-color: var(--border-hi); }
+
+/* Urgency tiers */
+.news-item.news-warning  { border-color: rgba(255,217,102,0.45); }
+.news-item.news-urgent   { border-color: var(--yellow); background: rgba(255,217,102,0.05); }
+
+@keyframes news-imminent-pulse {
+  0%,100% { border-color: var(--red); box-shadow: 0 0 4px rgba(255,82,82,0.3); }
+  50%     { border-color: #ff7070;    box-shadow: 0 0 12px rgba(255,82,82,0.65); }
+}
+.news-item.news-imminent {
+  animation: news-imminent-pulse 0.85s ease-in-out infinite;
+  background: rgba(255,82,82,0.05);
+}
+
+/* Top row: sentiment icon + headline */
+.news-top-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 7px;
+}
+
+.news-sentiment {
+  font-size: 13px;
+  line-height: 1.3;
+  flex-shrink: 0;
+}
+
+.news-sentiment.news-bull { color: var(--green); }
+.news-sentiment.news-bear { color: var(--red); }
+
+.news-headline {
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--text);
+  line-height: 1.4;
+}
+
+/* Meta row: target stock + success chance */
+.news-meta-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.news-target {
+  font-size: 10px;
+  color: var(--text-muted);
+}
+
+.news-chance {
+  font-size: 9px;
+  font-weight: bold;
+  padding: 1px 6px;
+  border-radius: 99px;
+  border: 1px solid currentColor;
+  white-space: nowrap;
+}
+.chance-high { color: var(--green); }
+.chance-med  { color: var(--yellow); }
+.chance-low  { color: var(--red); }
+
+/* Countdown */
+.news-countdown {
+  font-size: 10px;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.01em;
+}
+.news-countdown.news-warning  { color: var(--yellow); }
+.news-countdown.news-urgent   { color: var(--yellow); font-weight: bold; }
+.news-countdown.news-imminent { color: var(--red);    font-weight: bold; }
+
 /* ── Mini indicator bars ─────────────────────────────────────────────────────── */
 
 .asset-indicators {

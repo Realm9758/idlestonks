@@ -1,6 +1,7 @@
 import type { Market } from '../core/Market.ts';
 import type { Player } from '../core/Player.ts';
 import type { EventSystem, EventLogEntry } from '../core/EventSystem.ts';
+import type { NewsSystem } from '../core/NewsSystem.ts';
 import type { UpgradeSystem } from '../systems/UpgradeSystem.ts';
 import type { Asset } from '../core/Asset.ts';
 import {
@@ -77,6 +78,10 @@ export class Renderer {
     </div>
     <div class="header-stats">
       <div class="stat-block">
+        <span class="stat-label">DAY</span>
+        <span id="stat-day" class="stat-value">1</span>
+      </div>
+      <div class="stat-block">
         <span class="stat-label">CASH</span>
         <span id="stat-cash" class="stat-value">$1,000</span>
       </div>
@@ -128,6 +133,14 @@ export class Renderer {
           <span id="portfolio-total" class="panel-sub">$0.00</span>
         </div>
         <div id="portfolio-list"><p class="empty-msg">No positions yet. Buy something!</p></div>
+      </div>
+
+      <div id="news-panel" class="panel">
+        <div class="panel-header">
+          <h2>📰 Breaking News</h2>
+          <span id="news-active-count" class="panel-sub">0 pending</span>
+        </div>
+        <div id="news-list"><p class="empty-msg">Market watching for developments...</p></div>
       </div>
 
       <div id="events-panel" class="panel">
@@ -277,10 +290,12 @@ export class Renderer {
     day = 0,
     secondsInDay = 0,
     secondsPerDay = 60,
+    newsSystem?: NewsSystem,
   ): void {
-    this.updateHeader(player, market, upgradeSystem);
+    this.updateHeader(player, market, upgradeSystem, day);
     this.updateMarket(market, player, upgradeSystem);
     this.updatePortfolio(market);
+    this.updateNews(newsSystem, day, secondsInDay, secondsPerDay);
     this.updateEvents(eventSystem, upgradeSystem, day, secondsInDay, secondsPerDay);
     this.updateUpgrades(upgradeSystem, player, market);
     this.updateFooter(player, tick, day);
@@ -290,7 +305,8 @@ export class Renderer {
 
   // ── Header ────────────────────────────────────────────────────────────────
 
-  private updateHeader(player: Player, market: Market, upgradeSystem: UpgradeSystem): void {
+  private updateHeader(player: Player, market: Market, upgradeSystem: UpgradeSystem, day: number): void {
+    document.getElementById('stat-day')!.textContent = String(day + 1);
     const cashEl = document.getElementById('stat-cash')!;
     cashEl.textContent = formatCurrency(player.cash);
     cashEl.className = 'stat-value ' + (player.cash > 2000 ? 'green' : player.cash < 200 ? 'red' : '');
@@ -491,6 +507,67 @@ export class Renderer {
         <span class="p-mom ${isUp ? 'green' : isDown ? 'red' : 'muted'}">${arrow}</span>
       `;
       container.appendChild(row);
+    }
+  }
+
+  // ── News panel ───────────────────────────────────────────────────────────
+
+  private updateNews(
+    newsSystem: NewsSystem | undefined,
+    day: number,
+    secondsInDay: number,
+    secondsPerDay: number,
+  ): void {
+    const container = document.getElementById('news-list')!;
+    const countEl   = document.getElementById('news-active-count')!;
+
+    if (!newsSystem) return;
+
+    const active = newsSystem.getActive();
+    countEl.textContent = active.length === 0
+      ? '0 pending'
+      : `${active.length} pending`;
+
+    if (active.length === 0) {
+      container.innerHTML = '<p class="empty-msg">No active news. Check back later...</p>';
+      return;
+    }
+
+    // Sort by triggerDay ascending (soonest first)
+    const sorted = [...active].sort((a, b) => a.triggerDay - b.triggerDay);
+
+    container.innerHTML = '';
+    for (const item of sorted) {
+      const daysLeft     = item.triggerDay - day;
+      const secsLeft     = Math.max(0, (daysLeft - 1) * secondsPerDay + (secondsPerDay - secondsInDay));
+      const mm           = Math.floor(secsLeft / 60);
+      const ss           = secsLeft % 60;
+      const timeStr      = `${mm}:${ss.toString().padStart(2, '0')}`;
+      const dayLabel     = daysLeft <= 1 ? 'today' : `${daysLeft} days`;
+
+      const imminent = daysLeft <= 1 && secsLeft <= 15;
+      const urgent   = daysLeft <= 1 && !imminent;
+      const warning  = daysLeft === 2;
+      const urgencyCls = imminent ? 'news-imminent' : urgent ? 'news-urgent' : warning ? 'news-warning' : '';
+
+      const successPct = Math.round(item.successChance * 100);
+      const isUpNews   = item.successMult >= 1;  // bullish news if success is good
+      const sentimentCls  = isUpNews ? 'news-bull' : 'news-bear';
+      const sentimentIcon = isUpNews ? '📈' : '📉';
+
+      const el = createEl('div', `news-item ${urgencyCls}`);
+      el.innerHTML = `
+        <div class="news-top-row">
+          <span class="news-sentiment ${sentimentCls}">${sentimentIcon}</span>
+          <span class="news-headline">${item.headline}</span>
+        </div>
+        <div class="news-meta-row">
+          <span class="news-target">${item.targetEmoji} ${item.targetName}</span>
+          <span class="news-chance ${successPct >= 60 ? 'chance-high' : successPct >= 50 ? 'chance-med' : 'chance-low'}">${successPct}% success</span>
+        </div>
+        <div class="news-countdown ${urgencyCls}">⏳ ${dayLabel} (${timeStr})</div>
+      `;
+      container.appendChild(el);
     }
   }
 

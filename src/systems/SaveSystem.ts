@@ -2,6 +2,7 @@ import type { Player } from '../core/Player.ts';
 import type { Market } from '../core/Market.ts';
 import type { UpgradeSystem, UpgradeSaveData } from './UpgradeSystem.ts';
 import type { IdleSystem } from './IdleSystem.ts';
+import type { NewsSystem, NewsSaveState } from '../core/NewsSystem.ts';
 
 interface SaveData {
   version: number;
@@ -15,24 +16,31 @@ interface SaveData {
   day: number;
   secondsInDay: number;
   nextEventInDays: number;
+  news?: NewsSaveState;
 }
 
-const SAVE_KEY = 'idlestonks_v1';
-const SAVE_VERSION = 1;
+const SAVE_KEY = 'idlestonks_v2';
+const SAVE_VERSION = 2;
 
 export class SaveSystem {
   private ticksSinceLastSave = 0;
   private readonly saveEveryTicks = 5;
 
-  tick(player: Player, market: Market, upgradeSystem: UpgradeSystem, idleSystem?: IdleSystem): void {
+  tick(
+    player: Player, market: Market, upgradeSystem: UpgradeSystem,
+    idleSystem?: IdleSystem, newsSystem?: NewsSystem,
+  ): void {
     this.ticksSinceLastSave++;
     if (this.ticksSinceLastSave >= this.saveEveryTicks) {
       this.ticksSinceLastSave = 0;
-      this.save(player, market, upgradeSystem, idleSystem);
+      this.save(player, market, upgradeSystem, idleSystem, newsSystem);
     }
   }
 
-  save(player: Player, market: Market, upgradeSystem: UpgradeSystem, idleSystem?: IdleSystem): void {
+  save(
+    player: Player, market: Market, upgradeSystem: UpgradeSystem,
+    idleSystem?: IdleSystem, newsSystem?: NewsSystem,
+  ): void {
     const prices: Record<string, number> = {};
     const owned: Record<string, number> = {};
 
@@ -56,12 +64,13 @@ export class SaveSystem {
       day: idleSystem?.getDayCount() ?? 0,
       secondsInDay: idleSystem?.getSecondsInDay() ?? 0,
       nextEventInDays: 3,
+      news: newsSystem?.saveState(),
     };
 
     try {
       localStorage.setItem(SAVE_KEY, JSON.stringify(data));
     } catch {
-      // localStorage may be unavailable in some contexts
+      // localStorage may be unavailable
     }
   }
 
@@ -77,7 +86,10 @@ export class SaveSystem {
     }
   }
 
-  applyLoad(data: SaveData, player: Player, market: Market, upgradeSystem: UpgradeSystem, idleSystem?: IdleSystem): void {
+  applyLoad(
+    data: SaveData, player: Player, market: Market,
+    upgradeSystem: UpgradeSystem, idleSystem?: IdleSystem, newsSystem?: NewsSystem,
+  ): void {
     player.cash = data.cash ?? 1000;
     player.totalEarned = data.totalEarned ?? 0;
     player.tradeCount = data.tradeCount ?? 0;
@@ -86,9 +98,14 @@ export class SaveSystem {
     if (idleSystem) {
       idleSystem.loadDayState(data.day ?? 0, data.secondsInDay ?? 0, data.nextEventInDays ?? 3);
     }
+    if (newsSystem && data.news) {
+      newsSystem.loadState(data.news);
+    }
   }
 
   clearSave(): void {
     localStorage.removeItem(SAVE_KEY);
+    // Also clear old key in case user has v1 save
+    localStorage.removeItem('idlestonks_v1');
   }
 }

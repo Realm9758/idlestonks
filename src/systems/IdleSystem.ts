@@ -1,6 +1,7 @@
 import type { Market } from '../core/Market.ts';
 import type { Player } from '../core/Player.ts';
 import type { EventSystem, EventLogEntry } from '../core/EventSystem.ts';
+import type { NewsSystem, NewsItem, NewsResolution } from '../core/NewsSystem.ts';
 import type { UpgradeSystem } from './UpgradeSystem.ts';
 import type { SaveSystem } from './SaveSystem.ts';
 
@@ -8,6 +9,8 @@ export interface IdleCallbacks {
   onTick: (tick: number, day: number, secondsInDay: number, secondsPerDay: number) => void;
   onEvent: (entry: EventLogEntry) => void;
   onUnlock: (name: string) => void;
+  onNewsGenerated?: (item: NewsItem) => void;
+  onNewsResolved?: (resolution: NewsResolution) => void;
 }
 
 export class IdleSystem {
@@ -26,6 +29,7 @@ export class IdleSystem {
     private readonly upgradeSystem: UpgradeSystem,
     private readonly saveSystem: SaveSystem,
     private readonly callbacks: IdleCallbacks,
+    private readonly newsSystem?: NewsSystem,
   ) {}
 
   start(): void {
@@ -77,15 +81,25 @@ export class IdleSystem {
     }
 
     // Auto-save every 5 ticks
-    this.saveSystem.tick(this.player, this.market, this.upgradeSystem, this);
+    this.saveSystem.tick(this.player, this.market, this.upgradeSystem, this, this.newsSystem);
 
     this.callbacks.onTick(this.tickCount, this.dayCount, this.secondsInDay, this.secondsPerDay);
   }
 
   private fireDayEvents(): void {
+    // Chaos events
     const hamster = this.upgradeSystem.hasPurchased('prediction_hamster');
     const entry = this.eventSystem.dayTick(this.market, this.player, hamster);
     if (entry) this.callbacks.onEvent(entry);
+
+    // News generation + resolution
+    if (this.newsSystem) {
+      const newItem = this.newsSystem.generateIfDue(this.market, this.dayCount);
+      if (newItem) this.callbacks.onNewsGenerated?.(newItem);
+
+      const resolutions = this.newsSystem.dayTick(this.market, this.dayCount);
+      for (const r of resolutions) this.callbacks.onNewsResolved?.(r);
+    }
   }
 
   private runAutoTrader(): void {
