@@ -1,10 +1,11 @@
 import type { Player } from '../core/Player.ts';
 import type { Market } from '../core/Market.ts';
-import type { UpgradeSystem, UpgradeSaveData } from './UpgradeSystem.ts';
+import type { UpgradeSystem } from './UpgradeSystem.ts';
 import type { IdleSystem } from './IdleSystem.ts';
 import type { NewsSystem, NewsSaveState } from '../core/NewsSystem.ts';
 import type { RankSystem, RankSaveState } from './RankSystem.ts';
 import type { BlackMarketSystem, BmSaveState } from './BlackMarketSystem.ts';
+import type { InvestorSystem, InvestorSaveData } from './InvestorSystem.ts';
 
 interface SaveData {
   version: number;
@@ -13,7 +14,7 @@ interface SaveData {
   tradeCount: number;
   prices: Record<string, number>;
   owned: Record<string, number>;
-  upgrades: UpgradeSaveData;
+  upgrades: ReturnType<UpgradeSystem['saveState']>;
   savedAt: number;
   day: number;
   secondsInDay: number;
@@ -21,6 +22,7 @@ interface SaveData {
   news?: NewsSaveState;
   rank?: RankSaveState;
   blackMarket?: BmSaveState;
+  investors?: InvestorSaveData;
 }
 
 const SAVE_KEY = 'idlestonks_v2';
@@ -33,19 +35,19 @@ export class SaveSystem {
   tick(
     player: Player, market: Market, upgradeSystem: UpgradeSystem,
     idleSystem?: IdleSystem, newsSystem?: NewsSystem, rankSystem?: RankSystem,
-    blackMarketSystem?: BlackMarketSystem,
+    blackMarketSystem?: BlackMarketSystem, investorSystem?: InvestorSystem,
   ): void {
     this.ticksSinceLastSave++;
     if (this.ticksSinceLastSave >= this.saveEveryTicks) {
       this.ticksSinceLastSave = 0;
-      this.save(player, market, upgradeSystem, idleSystem, newsSystem, rankSystem, blackMarketSystem);
+      this.save(player, market, upgradeSystem, idleSystem, newsSystem, rankSystem, blackMarketSystem, investorSystem);
     }
   }
 
   save(
     player: Player, market: Market, upgradeSystem: UpgradeSystem,
     idleSystem?: IdleSystem, newsSystem?: NewsSystem, rankSystem?: RankSystem,
-    blackMarketSystem?: BlackMarketSystem,
+    blackMarketSystem?: BlackMarketSystem, investorSystem?: InvestorSystem,
   ): void {
     const prices: Record<string, number> = {};
     const owned: Record<string, number> = {};
@@ -62,10 +64,7 @@ export class SaveSystem {
       tradeCount: player.tradeCount,
       prices,
       owned,
-      upgrades: {
-        purchased: upgradeSystem.getPurchased(),
-        prestigeCount: upgradeSystem.prestigeCount,
-      },
+      upgrades: upgradeSystem.saveState(),
       savedAt: Date.now(),
       day: idleSystem?.getDayCount() ?? 0,
       secondsInDay: idleSystem?.getSecondsInDay() ?? 0,
@@ -73,6 +72,7 @@ export class SaveSystem {
       news: newsSystem?.saveState(),
       rank: rankSystem?.saveState(),
       blackMarket: blackMarketSystem?.saveState(),
+      investors: investorSystem?.saveState(),
     };
 
     try {
@@ -98,7 +98,7 @@ export class SaveSystem {
     data: SaveData, player: Player, market: Market,
     upgradeSystem: UpgradeSystem, idleSystem?: IdleSystem,
     newsSystem?: NewsSystem, rankSystem?: RankSystem,
-    blackMarketSystem?: BlackMarketSystem,
+    blackMarketSystem?: BlackMarketSystem, investorSystem?: InvestorSystem,
   ): void {
     player.cash = data.cash ?? 1000;
     player.totalEarned = data.totalEarned ?? 0;
@@ -111,11 +111,11 @@ export class SaveSystem {
     if (newsSystem && data.news) newsSystem.loadState(data.news);
     if (rankSystem && data.rank) rankSystem.loadState(data.rank);
     if (blackMarketSystem && data.blackMarket) blackMarketSystem.loadState(data.blackMarket);
+    if (investorSystem && data.investors) investorSystem.loadState(data.investors);
   }
 
   clearSave(): void {
     localStorage.removeItem(SAVE_KEY);
-    // Also clear old key in case user has v1 save
     localStorage.removeItem('idlestonks_v1');
   }
 }

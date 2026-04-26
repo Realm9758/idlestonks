@@ -69,6 +69,18 @@ export class RankSystem {
     return this.displayIndex(netWorth) >= required;
   }
 
+  getNextFeatureUnlock(netWorth: number): { label: string; atRank: Rank } | null {
+    const di = this.displayIndex(netWorth);
+    const FEATURE_LABELS: Record<string, string> = { black_market: 'Black Market' };
+    const sorted = Object.entries(FEATURE_RANK_INDEX).sort((a, b) => a[1] - b[1]);
+    for (const [feature, rankIdx] of sorted) {
+      if (rankIdx > di) {
+        return { label: FEATURE_LABELS[feature] ?? feature, atRank: RANKS[rankIdx] };
+      }
+    }
+    return null;
+  }
+
   getAllRanks(): Rank[] { return [...RANKS]; }
   getHighestRankIndex(): number { return this.highestRankIndex; }
 

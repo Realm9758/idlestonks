@@ -7,6 +7,7 @@ import { SaveSystem } from './systems/SaveSystem.ts';
 import { IdleSystem } from './systems/IdleSystem.ts';
 import { RankSystem } from './systems/RankSystem.ts';
 import { BlackMarketSystem } from './systems/BlackMarketSystem.ts';
+import { InvestorSystem } from './systems/InvestorSystem.ts';
 import { BlackMarketPanel } from './ui/BlackMarketPanel.ts';
 import { Renderer } from './ui/render.ts';
 import { getTradeInsight } from './ui/components.ts';
@@ -14,14 +15,15 @@ import { screenFlash, screenShake } from './ui/animations.ts';
 
 // ── Bootstrap ────────────────────────────────────────────────────────────────
 
-const market        = new Market();
-const player        = new Player();
-const eventSystem   = new EventSystem();
-const newsSystem    = new NewsSystem();
-const upgradeSystem = new UpgradeSystem();
-const saveSystem    = new SaveSystem();
-const rankSystem    = new RankSystem();
-const bmSystem      = new BlackMarketSystem();
+const market          = new Market();
+const player          = new Player();
+const eventSystem     = new EventSystem();
+const newsSystem      = new NewsSystem();
+const upgradeSystem   = new UpgradeSystem();
+const saveSystem      = new SaveSystem();
+const rankSystem      = new RankSystem();
+const bmSystem        = new BlackMarketSystem();
+const investorSystem  = new InvestorSystem();
 
 // ── Idle system ───────────────────────────────────────────────────────────────
 // Created before renderer so save restoration can set day state before first render.
@@ -31,6 +33,7 @@ let lastBmDay = -1;
 const idleSystem = new IdleSystem(
   market, player, eventSystem, upgradeSystem, saveSystem,
   { // callbacks
+
     onTick(tick, day, secondsInDay, secondsPerDay) {
       const nw = player.getNetWorth(market);
 
@@ -65,7 +68,7 @@ const idleSystem = new IdleSystem(
         }
       }
 
-      renderer.update(market, player, eventSystem, upgradeSystem, tick, day, secondsInDay, secondsPerDay, newsSystem, rankSystem);
+      renderer.update(market, player, eventSystem, upgradeSystem, tick, day, secondsInDay, secondsPerDay, newsSystem, rankSystem, investorSystem);
     },
 
     onEvent(entry) {
@@ -108,13 +111,14 @@ const idleSystem = new IdleSystem(
   newsSystem,
   rankSystem,
   bmSystem,
+  investorSystem,
 );
 
 // ── Restore save ──────────────────────────────────────────────────────────────
 
 const savedData = saveSystem.load();
 if (savedData) {
-  saveSystem.applyLoad(savedData, player, market, upgradeSystem, idleSystem, newsSystem, rankSystem, bmSystem);
+  saveSystem.applyLoad(savedData, player, market, upgradeSystem, idleSystem, newsSystem, rankSystem, bmSystem, investorSystem);
   market.checkUnlocks(player.getNetWorth(market));
   if (upgradeSystem.hasPurchased('volatility_damper')) market.applyVolatilityDamper();
   if (upgradeSystem.hasPurchased('time_warp')) idleSystem.applyTimeWarp();
@@ -265,6 +269,24 @@ const renderer = new Renderer({
   onSetCash(amount: number) {
     player.cash = amount;
   },
+
+  onBuyLeveledUpgrade(id: string) {
+    const result = upgradeSystem.buyLevel(id, player.cash);
+    renderer.showToast(result.message, result.success ? 'success' : 'error');
+    if (result.success) {
+      player.cash = result.newCash;
+      eventSystem.addEntry(result.message, 'good');
+    }
+  },
+
+  onHireInvestor(tierId: string) {
+    const result = investorSystem.hire(tierId, player.cash, rankSystem.getHighestRankIndex());
+    renderer.showToast(result.message, result.success ? 'success' : 'error');
+    if (result.success) {
+      player.cash = result.newCash;
+      eventSystem.addEntry(result.message, 'good');
+    }
+  },
 });
 
 // ── Black market panel ────────────────────────────────────────────────────────
@@ -290,7 +312,7 @@ document.addEventListener('open-insight', (e) => {
 renderer.update(
   market, player, eventSystem, upgradeSystem, 0,
   idleSystem.getDayCount(), idleSystem.getSecondsInDay(), idleSystem.getSecondsPerDay(),
-  newsSystem, rankSystem,
+  newsSystem, rankSystem, investorSystem,
 );
 idleSystem.start();
 eventSystem.addEntry('📈 IdleStonks launched. Events fire every 2–5 days. Watch 📰 Breaking News for timed opportunities.', 'neutral');

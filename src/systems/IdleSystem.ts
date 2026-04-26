@@ -6,6 +6,7 @@ import type { UpgradeSystem } from './UpgradeSystem.ts';
 import type { SaveSystem } from './SaveSystem.ts';
 import type { RankSystem } from './RankSystem.ts';
 import type { BlackMarketSystem } from './BlackMarketSystem.ts';
+import type { InvestorSystem } from './InvestorSystem.ts';
 
 export interface IdleCallbacks {
   onTick: (tick: number, day: number, secondsInDay: number, secondsPerDay: number) => void;
@@ -34,6 +35,7 @@ export class IdleSystem {
     private readonly newsSystem?: NewsSystem,
     private readonly rankSystem?: RankSystem,
     private readonly blackMarketSystem?: BlackMarketSystem,
+    private readonly investorSystem?: InvestorSystem,
   ) {}
 
   start(): void {
@@ -62,18 +64,34 @@ export class IdleSystem {
     for (const name of newlyUnlocked) this.callbacks.onUnlock(name);
 
     // Passive dividend income
-    const bonus = this.upgradeSystem.applyPassiveIncome(this.player.getPortfolioValue(this.market));
+    const hasActiveNews = this.newsSystem ? this.newsSystem.getActive().length > 0 : false;
+    const bonus = this.upgradeSystem.applyPassiveIncome(
+      this.player.getPortfolioValue(this.market),
+      hasActiveNews,
+    );
     if (bonus > 0) {
       this.player.cash += bonus;
       this.player.totalEarned += bonus;
     }
 
-    // Auto trader: buy cheapest asset every 10 ticks
-    if (this.upgradeSystem.hasPurchased('auto_trader')) {
+    // Investor passive income
+    if (this.investorSystem) {
+      const investorBonus = this.investorSystem.computeIncome(netWorth);
+      if (investorBonus > 0) {
+        this.player.cash += investorBonus;
+        this.player.totalEarned += investorBonus;
+      }
+    }
+
+    // Auto trader — leveled behavior
+    const traderLevel = this.upgradeSystem.getLevel('auto_trader');
+    if (traderLevel > 0) {
       this.autoTraderTimer++;
-      if (this.autoTraderTimer >= 10) {
+      const interval = traderLevel >= 4 ? 5 : traderLevel >= 2 ? 8 : 10;
+      if (this.autoTraderTimer >= interval) {
         this.autoTraderTimer = 0;
-        this.runAutoTrader();
+        const traders = traderLevel >= 5 ? 3 : 1;
+        for (let i = 0; i < traders; i++) this.runAutoTrader(traderLevel);
       }
     }
 
@@ -85,7 +103,10 @@ export class IdleSystem {
     }
 
     // Auto-save every 5 ticks
-    this.saveSystem.tick(this.player, this.market, this.upgradeSystem, this, this.newsSystem, this.rankSystem, this.blackMarketSystem);
+    this.saveSystem.tick(
+      this.player, this.market, this.upgradeSystem, this,
+      this.newsSystem, this.rankSystem, this.blackMarketSystem, this.investorSystem,
+    );
 
     this.callbacks.onTick(this.tickCount, this.dayCount, this.secondsInDay, this.secondsPerDay);
   }
@@ -107,11 +128,33 @@ export class IdleSystem {
     }
   }
 
-  private runAutoTrader(): void {
-    const budget = this.player.cash * 0.08;
-    const affordable = this.market.getUnlockedAssets()
-      .filter(a => a.price <= budget)
-      .sort((a, b) => a.price - b.price);
+  private runAutoTrader(level: number): void {
+    const budgetPct = level >= 4 ? 0.12 : 0.08;
+    const budget = this.player.cash * budgetPct;
+    const unlocked = this.market.getUnlockedAssets();
+
+    if (level >= 3 && this.newsSystem) {
+      // News-aware: prefer hyped assets during active events
+      const hyped = unlocked.filter(a => a.hype > 0.5 && a.price <= budget);
+      if (hyped.length > 0) {
+        hyped.sort((a, b) => b.hype - a.hype);
+        this.player.buy(hyped[0].id, 1, this.market);
+        return;
+      }
+    }
+
+    if (level >= 2) {
+      // Momentum-based: buy highest positive momentum
+      const momentum = unlocked.filter(a => a.momentum > 0 && a.price <= budget);
+      if (momentum.length > 0) {
+        momentum.sort((a, b) => b.momentum - a.momentum);
+        this.player.buy(momentum[0].id, 1, this.market);
+        return;
+      }
+    }
+
+    // Level 1: cheapest affordable
+    const affordable = unlocked.filter(a => a.price <= budget).sort((a, b) => a.price - b.price);
     if (affordable.length > 0) this.player.buy(affordable[0].id, 1, this.market);
   }
 
@@ -121,7 +164,6 @@ export class IdleSystem {
     this.secondsPerDay = 30;
   }
 
-  // Immediately advance to the next day boundary. Returns false if player can't afford it.
   skipToNextDay(): boolean {
     const cost = 150;
     if (this.player.cash < cost) return false;

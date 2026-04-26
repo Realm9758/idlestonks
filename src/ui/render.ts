@@ -4,8 +4,11 @@ import type { EventSystem, EventLogEntry } from '../core/EventSystem.ts';
 import type { NewsSystem, NewsItem } from '../core/NewsSystem.ts';
 import type { UpgradeSystem } from '../systems/UpgradeSystem.ts';
 import type { RankSystem, Rank } from '../systems/RankSystem.ts';
+import type { InvestorSystem } from '../systems/InvestorSystem.ts';
 import type { BlackMarketPanel } from './BlackMarketPanel.ts';
 import type { Asset } from '../core/Asset.ts';
+import { INVESTOR_TIERS } from '../systems/InvestorSystem.ts';
+import { LEVELED_UPGRADES } from '../systems/UpgradeSystem.ts';
 import {
   formatCurrency, formatPct, timeAgo, createEl,
   getInsightText, getMomentumArrow,
@@ -28,6 +31,8 @@ export interface RenderCallbacks {
   onShowMarketIntel: () => void;
   onSkipDay: () => void;
   onSetCash: (amount: number) => void;
+  onBuyLeveledUpgrade: (id: string) => void;
+  onHireInvestor: (tierId: string) => void;
 }
 
 interface Toast { el: HTMLElement; removeAt: number; }
@@ -61,7 +66,6 @@ export class Renderer {
   private toasts: Toast[] = [];
   private tickerIndex = 0;
   private lastUnlockedCount = -1;
-  private lastUpgradeCount = -1;
   private lastLogId = -1;
   private darkMode = true;
 
@@ -77,7 +81,15 @@ export class Renderer {
 
   // Black market
   private bmPanel: BlackMarketPanel | null = null;
-  private currentTab: 'main' | 'bm' = 'main';
+  private currentTab: 'main' | 'upgrades' | 'bm' = 'main';
+
+  // Investor system
+  private storedInvestorSystem: InvestorSystem | null = null;
+
+  // Upgrades tab change detection
+  private lastCoreUpgradeKey = '';
+  private lastLeveledKey = '';
+  private lastInvestorKey = '';
 
   // News change-detection
   private newsActiveKey = '';
@@ -134,6 +146,7 @@ export class Renderer {
           </div>
           <span id="rank-next-name" class="rank-next-label"></span>
         </div>
+        <div id="rank-unlock-hint" class="rank-unlock-hint"></div>
       </div>
       <div class="stat-block prestige-block hidden" id="prestige-block">
         <span class="stat-label">MULTIPLIER</span>
@@ -148,6 +161,7 @@ export class Renderer {
 
   <div id="tab-bar">
     <button class="tab-btn tab-active" data-tab="main">📊 Market</button>
+    <button class="tab-btn" data-tab="upgrades">📦 Upgrades</button>
     <button class="tab-btn tab-locked" data-tab="bm" id="tab-bm">🔒 Classified</button>
   </div>
 
@@ -214,10 +228,19 @@ export class Renderer {
         <div id="event-log"><p class="empty-msg">Waiting for chaos...</p></div>
       </div>
 
-      <div id="upgrades-panel" class="panel">
-        <div class="panel-header"><h2>⚙️ Upgrades</h2></div>
-        <div id="upgrade-list"><p class="empty-msg">Grow your net worth to unlock upgrades.</p></div>
-      </div>
+    </div>
+  </div>
+
+  <!-- Upgrades tab panel -->
+  <div id="upgrades-tab-panel" class="hidden">
+    <div class="upg-tab-wrap">
+      <div class="upg-section-header">🔧 Core Upgrades</div>
+      <div id="upg-core-grid" class="upg-core-grid"></div>
+      <div class="upg-section-header">📈 Leveled Systems</div>
+      <div id="upg-leveled-grid" class="upg-leveled-grid"></div>
+      <div class="upg-section-header">👥 Investor Network</div>
+      <p class="upg-investor-hint">Hire specialists who generate passive income based on your net worth every tick.</p>
+      <div id="upg-investor-grid" class="upg-investor-grid"></div>
     </div>
   </div>
 
@@ -368,7 +391,7 @@ export class Renderer {
     document.getElementById('tab-bar')!.addEventListener('click', (e) => {
       const btn = (e.target as HTMLElement).closest<HTMLElement>('[data-tab]');
       if (!btn || btn.classList.contains('tab-locked')) return;
-      this.switchTab(btn.dataset.tab as 'main' | 'bm');
+      this.switchTab(btn.dataset.tab as 'main' | 'upgrades' | 'bm');
     });
     document.getElementById('btn-dark')!.addEventListener('click', () => this.callbacks.onDarkModeToggle());
     document.getElementById('btn-skip-day')!.addEventListener('click', () => this.callbacks.onSkipDay());
@@ -424,9 +447,11 @@ export class Renderer {
     secondsPerDay = 60,
     newsSystem?: NewsSystem,
     rankSystem?: RankSystem,
+    investorSystem?: InvestorSystem,
   ): void {
     if (newsSystem) this.storedNewsSystem = newsSystem;
     if (rankSystem) this.storedRankSystem = rankSystem;
+    if (investorSystem) this.storedInvestorSystem = investorSystem;
     this.currentDay = day;
     this.currentSecInDay = secondsInDay;
     this.currentSecPerDay = secondsPerDay;
@@ -435,7 +460,7 @@ export class Renderer {
     this.updatePortfolio(market);
     this.updateNews(newsSystem, day, secondsInDay, secondsPerDay);
     this.updateEvents(eventSystem, upgradeSystem, day, secondsInDay, secondsPerDay);
-    this.updateUpgrades(upgradeSystem, player, market);
+    this.updateUpgradesTab(upgradeSystem, player, market);
     this.updateFooter(player, tick, day);
     if (this.openInsightId) this.refreshInsightPanel(market);
     this.drainToasts();
@@ -468,6 +493,11 @@ export class Renderer {
       (document.getElementById('rank-progress-fill') as HTMLElement).style.width = `${pct.toFixed(1)}%`;
       document.getElementById('rank-next-name')!.textContent =
         nextRank ? `→ ${nextRank.name}` : '🏆 MAX';
+      const unlock = this.storedRankSystem.getNextFeatureUnlock(nw);
+      const hintEl = document.getElementById('rank-unlock-hint')!;
+      hintEl.textContent = unlock
+        ? `🔓 ${unlock.label} at ${unlock.atRank.emoji} ${unlock.atRank.name}`
+        : '';
     }
   }
 
@@ -908,54 +938,152 @@ export class Renderer {
     }, 4200);
   }
 
-  // ── Upgrades ──────────────────────────────────────────────────────────────
+  // ── Upgrades tab ──────────────────────────────────────────────────────────
 
-  private updateUpgrades(upgradeSystem: UpgradeSystem, player: Player, market: Market): void {
-    const purchased = upgradeSystem.getPurchasedUpgrades();
-    if (purchased.length !== this.lastUpgradeCount) {
-      this.lastUpgradeCount = purchased.length;
-      this.buildUpgradeList(upgradeSystem);
-    }
-    this.refreshUpgradeButtons(upgradeSystem, player, market);
+  private updateUpgradesTab(upgradeSystem: UpgradeSystem, player: Player, market: Market): void {
     if (upgradeSystem.hasPurchased('prestige_chip')) {
       document.getElementById('btn-prestige')!.classList.remove('hidden');
     }
+
+    const netWorth = player.getNetWorth(market);
+    const coreKey = upgradeSystem.getPurchased().sort().join(',');
+    const leveledKey = upgradeSystem.getAllLeveledUpgrades()
+      .map(u => `${u.id}:${upgradeSystem.getLevel(u.id)}`).join(',');
+    const investorKey = this.storedInvestorSystem
+      ? INVESTOR_TIERS.map(t => `${t.id}:${this.storedInvestorSystem!.getCount(t.id)}`).join(',')
+      : '';
+
+    // Rebuild core section if purchases changed
+    if (coreKey !== this.lastCoreUpgradeKey) {
+      this.lastCoreUpgradeKey = coreKey;
+      this.buildCoreUpgradeCards(upgradeSystem);
+    }
+
+    // Rebuild leveled section if any level changed
+    if (leveledKey !== this.lastLeveledKey) {
+      this.lastLeveledKey = leveledKey;
+      this.buildLeveledUpgradeCards(upgradeSystem);
+    }
+
+    // Rebuild investor section if counts changed
+    if (investorKey !== this.lastInvestorKey) {
+      this.lastInvestorKey = investorKey;
+      this.buildInvestorCards();
+    }
+
+    // Refresh all button enabled states every tick
+    this.refreshCoreButtons(upgradeSystem, player, netWorth);
+    this.refreshLeveledButtons(upgradeSystem, player, netWorth);
+    this.refreshInvestorButtons(player, netWorth);
   }
 
-  private buildUpgradeList(upgradeSystem: UpgradeSystem): void {
-    const container = document.getElementById('upgrade-list')!;
-    container.innerHTML = '';
+  private buildCoreUpgradeCards(upgradeSystem: UpgradeSystem): void {
+    const grid = document.getElementById('upg-core-grid')!;
+    grid.innerHTML = '';
     for (const upg of upgradeSystem.getAllUpgrades()) {
-      if (upgradeSystem.hasPurchased(upg.id)) {
-        const card = createEl('div', 'upgrade-card owned');
-        card.innerHTML = `
-          <div class="upg-info">
-            <span class="upg-name">${upg.emoji} ${upg.name}</span>
-            <span class="upg-desc">${upg.description}</span>
-          </div>
-          <span class="upg-owned-badge">OWNED</span>`;
-        container.appendChild(card);
-      } else {
-        const card = createEl('div', 'upgrade-card');
-        card.innerHTML = `
-          <div class="upg-info">
-            <span class="upg-name">${upg.emoji} ${upg.name}</span>
-            <span class="upg-desc">${upg.description}</span>
-          </div>
-          <button class="btn btn-buy-upg" data-upg-id="${upg.id}">${formatCurrency(upg.cost)}</button>`;
-        card.querySelector<HTMLButtonElement>('.btn-buy-upg')!.addEventListener('click', () => {
+      const owned = upgradeSystem.hasPurchased(upg.id);
+      const card = createEl('div', `upg-card upg-card-core${owned ? ' upg-owned' : ''}`);
+      card.innerHTML = `
+        <div class="upg-card-icon">${upg.emoji}</div>
+        <div class="upg-card-content">
+          <div class="upg-card-name">${upg.name}</div>
+          <div class="upg-card-desc">${upg.description}</div>
+        </div>
+        <div class="upg-card-action">
+          ${owned
+            ? '<span class="upg-owned-badge">✓ OWNED</span>'
+            : `<button class="btn upg-buy-btn" data-upg-id="${upg.id}">${formatCurrency(upg.cost)}</button>`
+          }
+        </div>`;
+      if (!owned) {
+        card.querySelector<HTMLButtonElement>('.upg-buy-btn')!.addEventListener('click', () => {
           this.callbacks.onBuyUpgrade(upg.id);
-          this.lastUpgradeCount = -1;
+          this.lastCoreUpgradeKey = '';
         });
-        container.appendChild(card);
       }
+      grid.appendChild(card);
     }
   }
 
-  private refreshUpgradeButtons(upgradeSystem: UpgradeSystem, player: Player, market: Market): void {
-    const container = document.getElementById('upgrade-list')!;
-    const netWorth = player.getNetWorth(market);
-    for (const btn of container.querySelectorAll<HTMLButtonElement>('.btn-buy-upg')) {
+  private buildLeveledUpgradeCards(upgradeSystem: UpgradeSystem): void {
+    const grid = document.getElementById('upg-leveled-grid')!;
+    grid.innerHTML = '';
+    for (const def of LEVELED_UPGRADES) {
+      const level = upgradeSystem.getLevel(def.id);
+      const maxed = level >= def.maxLevel;
+      const card = createEl('div', `upg-card upg-card-leveled${maxed ? ' upg-maxed' : ''}`);
+      const pips = Array.from({ length: def.maxLevel }, (_, i) =>
+        `<span class="upg-pip${i < level ? ' upg-pip-filled' : ''}">${i + 1}</span>`,
+      ).join('');
+      const currDesc = level > 0 ? def.levelDescriptions[level - 1] : 'Not yet purchased';
+      const nextDesc = level < def.maxLevel ? def.levelDescriptions[level] : null;
+      const cost = upgradeSystem.getLeveledCost(def.id);
+      card.innerHTML = `
+        <div class="upg-leveled-header">
+          <span class="upg-card-icon">${def.emoji}</span>
+          <span class="upg-card-name">${def.name}</span>
+          <div class="upg-pips">${pips}</div>
+        </div>
+        <div class="upg-leveled-body">
+          <div class="upg-curr-effect">${level > 0 ? `Lv ${level}: ${currDesc}` : currDesc}</div>
+          ${nextDesc ? `<div class="upg-next-effect">→ Lv ${level + 1}: ${nextDesc}</div>` : ''}
+        </div>
+        <div class="upg-card-action">
+          ${maxed
+            ? '<span class="upg-maxed-badge">⭐ MAXED</span>'
+            : `<button class="btn upg-level-btn" data-leveled-id="${def.id}">${cost ? `Upgrade — ${formatCurrency(cost)}` : '—'}</button>`
+          }
+        </div>`;
+      if (!maxed) {
+        card.querySelector<HTMLButtonElement>('.upg-level-btn')!.addEventListener('click', () => {
+          this.callbacks.onBuyLeveledUpgrade(def.id);
+          this.lastLeveledKey = '';
+        });
+      }
+      grid.appendChild(card);
+    }
+  }
+
+  private buildInvestorCards(): void {
+    const grid = document.getElementById('upg-investor-grid')!;
+    grid.innerHTML = '';
+    for (const tier of INVESTOR_TIERS) {
+      const count = this.storedInvestorSystem?.getCount(tier.id) ?? 0;
+      const full = this.storedInvestorSystem?.isFull(tier.id) ?? false;
+      const card = createEl('div', `upg-card upg-card-investor`);
+      card.dataset.investorId = tier.id;
+      card.innerHTML = `
+        <div class="upg-investor-header">
+          <span class="upg-investor-emoji">${tier.emoji}</span>
+          <div class="upg-investor-meta">
+            <div class="upg-card-name">${tier.name}</div>
+            <div class="upg-card-desc">${tier.description}</div>
+          </div>
+          <div class="upg-investor-count">${count}<span class="upg-count-max">/${tier.maxCount}</span></div>
+        </div>
+        <div class="upg-investor-income">
+          <span class="upg-income-label">Income/tick</span>
+          <span class="upg-income-rate">${(tier.incomeRate * 100).toFixed(4)}% × net worth × count</span>
+        </div>
+        <div class="upg-card-action">
+          ${full
+            ? '<span class="upg-full-badge">FULL</span>'
+            : `<button class="btn upg-hire-btn" data-investor-id="${tier.id}" data-rank-req="${tier.unlockRankIndex}">Hire</button>`
+          }
+        </div>`;
+      if (!full) {
+        card.querySelector<HTMLButtonElement>('.upg-hire-btn')!.addEventListener('click', () => {
+          this.callbacks.onHireInvestor(tier.id);
+          this.lastInvestorKey = '';
+        });
+      }
+      grid.appendChild(card);
+    }
+  }
+
+  private refreshCoreButtons(upgradeSystem: UpgradeSystem, player: Player, netWorth: number): void {
+    const grid = document.getElementById('upg-core-grid')!;
+    for (const btn of grid.querySelectorAll<HTMLButtonElement>('.upg-buy-btn')) {
       const id = btn.dataset.upgId!;
       const upg = upgradeSystem.getAllUpgrades().find(u => u.id === id);
       if (!upg) continue;
@@ -963,14 +1091,62 @@ export class Renderer {
       const canAfford = player.cash >= upg.cost;
       btn.disabled = !meetsThreshold || !canAfford;
       if (!meetsThreshold) {
-        btn.textContent = `🔒 Need ${formatCurrency(upg.unlockThreshold)} NW`;
-        btn.classList.add('locked');
-      } else if (!canAfford) {
-        btn.textContent = `${formatCurrency(upg.cost)} (need ${formatCurrency(upg.cost - player.cash)} more)`;
-        btn.classList.remove('locked');
+        btn.textContent = `🔒 ${formatCurrency(upg.unlockThreshold)} NW`;
+        btn.classList.add('upg-locked');
       } else {
         btn.textContent = formatCurrency(upg.cost);
-        btn.classList.remove('locked');
+        btn.classList.remove('upg-locked');
+      }
+    }
+  }
+
+  private refreshLeveledButtons(upgradeSystem: UpgradeSystem, player: Player, netWorth: number): void {
+    const grid = document.getElementById('upg-leveled-grid')!;
+    for (const btn of grid.querySelectorAll<HTMLButtonElement>('.upg-level-btn')) {
+      const id = btn.dataset.leveledId!;
+      const def = LEVELED_UPGRADES.find(u => u.id === id);
+      if (!def) continue;
+      const cost = upgradeSystem.getLeveledCost(id);
+      if (cost === null) { btn.disabled = true; btn.textContent = 'MAXED'; return; }
+      const meetsThreshold = netWorth >= def.unlockNetWorth;
+      const canAfford = player.cash >= cost;
+      btn.disabled = !meetsThreshold || !canAfford;
+      if (!meetsThreshold) {
+        btn.textContent = `🔒 ${formatCurrency(def.unlockNetWorth)} NW`;
+        btn.classList.add('upg-locked');
+      } else {
+        btn.textContent = `Upgrade — ${formatCurrency(cost)}`;
+        btn.classList.remove('upg-locked');
+      }
+    }
+  }
+
+  private refreshInvestorButtons(player: Player, netWorth: number): void {
+    const grid = document.getElementById('upg-investor-grid')!;
+    if (!this.storedInvestorSystem) return;
+    const rankIndex = this.storedRankSystem?.getHighestRankIndex() ?? 0;
+    for (const btn of grid.querySelectorAll<HTMLButtonElement>('.upg-hire-btn')) {
+      const id = btn.dataset.investorId!;
+      const tier = INVESTOR_TIERS.find(t => t.id === id);
+      if (!tier) continue;
+      const cost = this.storedInvestorSystem.getHireCost(id);
+      const unlocked = rankIndex >= tier.unlockRankIndex;
+      const canAfford = player.cash >= cost;
+      btn.disabled = !unlocked || !canAfford;
+      if (!unlocked) {
+        const reqRank = this.storedRankSystem?.getAllRanks()[tier.unlockRankIndex];
+        btn.textContent = `🔒 ${reqRank?.name ?? 'Higher rank'}`;
+        btn.classList.add('upg-locked');
+      } else {
+        btn.textContent = `Hire — ${formatCurrency(cost)}`;
+        btn.classList.remove('upg-locked');
+        // Show live income preview
+        const incomeEl = btn.closest('.upg-card')?.querySelector<HTMLElement>('.upg-income-rate');
+        if (incomeEl) {
+          const count = this.storedInvestorSystem.getCount(id);
+          const perTick = netWorth * tier.incomeRate * (count + 1);
+          incomeEl.textContent = `+${formatCurrency(perTick)}/tick with ${count + 1} hired`;
+        }
       }
     }
   }
@@ -1389,12 +1565,15 @@ export class Renderer {
     this.bmPanel = panel;
   }
 
-  switchTab(tab: 'main' | 'bm'): void {
+  switchTab(tab: 'main' | 'upgrades' | 'bm'): void {
     this.currentTab = tab;
     document.getElementById('main-grid')!.classList.toggle('hidden', tab !== 'main');
+    document.getElementById('upgrades-tab-panel')!.classList.toggle('hidden', tab !== 'upgrades');
     document.getElementById('bm-panel-mount')!.classList.toggle('hidden', tab !== 'bm');
     document.querySelectorAll<HTMLElement>('#tab-bar [data-tab]').forEach(btn => {
       btn.classList.toggle('tab-active', btn.dataset.tab === tab);
+      btn.classList.remove('tab-active');
+      if (btn.dataset.tab === tab) btn.classList.add('tab-active');
     });
     if (tab === 'bm' && this.bmPanel && !this.bmPanel.tutorialStarted) {
       this.bmPanel.playTutorial();
