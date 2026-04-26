@@ -46,6 +46,61 @@ export function setText(id: string, text: string): void {
 // Returns a short insight shown as a second toast when the player buys or sells.
 // The goal: teach players what signals matter, without being preachy.
 
+// ── Momentum arrow ────────────────────────────────────────────────────────────
+
+export function getMomentumArrow(momentum: number): string {
+  if (momentum > 0.025) return '↑↑';
+  if (momentum > 0.006) return '↑';
+  if (momentum < -0.025) return '↓↓';
+  if (momentum < -0.006) return '↓';
+  return '→';
+}
+
+// ── Insight panel text ────────────────────────────────────────────────────────
+//
+// Short AI-style read on the asset based on its current stats.
+// Patterns are intentionally learnable: players who understand the signals
+// will see these confirm their read, reinforcing the mental model.
+
+export function getInsightText(asset: Asset): string {
+  const { hype, momentum, stability, risk } = asset;
+
+  if (hype > 0.75 && momentum > 0.015)
+    return '🔥 Hype peak + rising momentum. Classic pump setup. Ride it, then exit fast.';
+  if (hype > 0.70 && momentum < -0.01)
+    return '⚠️ Overhyped with falling momentum. Pre-crash pattern. Consider selling.';
+  if (hype > 0.55 && risk > 0.6)
+    return '💣 High hype + extreme risk = maximum volatility. One bad event away from ruin.';
+
+  if (stability > 0.70)
+    return '🛡 Low noise, steady gains. Best for passive accumulation and crash hedging.';
+  if (stability > 0.50 && momentum > 0)
+    return '⚖️ Stable and rising. Less exciting, but consistent. Safe long-term hold.';
+
+  if (risk > 0.80)
+    return '🌋 Extreme risk. Sleeping volcano. Could +400% or -90% on any given tick.';
+  if (risk > 0.65 && hype < 0.25)
+    return '🎲 High risk, cold hype. Hidden potential — or just chaos waiting to erupt.';
+
+  if (momentum > 0.025)
+    return '🚀 Strong upward momentum. Trend continuation is likely. Classic momentum buy.';
+  if (momentum > 0.010)
+    return '📈 Rising momentum. Moderate trend forming. Monitor for acceleration.';
+  if (momentum < -0.025)
+    return '📉 Steep decline in progress. Strong negative momentum. Do not catch this knife.';
+  if (momentum < -0.010)
+    return '↘️ Negative momentum building. Could reverse or continue dropping.';
+
+  if (hype > 0.50 && stability < 0.25)
+    return '💣 Hyped but fragile. One bad event and this craters hard.';
+  if (hype < 0.15 && stability > 0.40 && risk < 0.30)
+    return '💎 Cold hype, solid foundation, low risk. Value investor territory.';
+
+  return '📊 Mixed signals. No clear edge right now. Watch for momentum or hype changes.';
+}
+
+// ── Trade feedback ────────────────────────────────────────────────────────────
+
 export function getTradeInsight(asset: Asset, action: 'buy' | 'sell'): string {
   if (action === 'buy') {
     if (asset.momentum > 0.02 && asset.hype > 0.5)

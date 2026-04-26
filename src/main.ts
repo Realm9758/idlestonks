@@ -6,6 +6,7 @@ import { SaveSystem } from './systems/SaveSystem.ts';
 import { IdleSystem } from './systems/IdleSystem.ts';
 import { Renderer } from './ui/render.ts';
 import { getTradeInsight } from './ui/components.ts';
+import { screenFlash } from './ui/animations.ts';
 
 // ── Bootstrap ────────────────────────────────────────────────────────────────
 
@@ -34,6 +35,7 @@ const renderer = new Renderer({
     if (result.success && asset) {
       eventSystem.addEntry(result.message);
       renderer.showToast(getTradeInsight(asset, 'buy'), 'info');
+      renderer.animateTrade(assetId, `-${(asset.price * qty).toFixed(0)}`, 'down');
     }
   },
 
@@ -44,6 +46,7 @@ const renderer = new Renderer({
     if (result.success && asset) {
       eventSystem.addEntry(result.message);
       renderer.showToast(getTradeInsight(asset, 'sell'), 'info');
+      renderer.animateTrade(assetId, `+${(asset.price * qty).toFixed(0)}`, 'up');
     }
   },
 
@@ -57,17 +60,20 @@ const renderer = new Renderer({
     if (result.success) {
       eventSystem.addEntry(result.message);
       renderer.showToast(getTradeInsight(asset, 'buy'), 'info');
+      renderer.animateTrade(assetId, `-${(asset.price * qty).toFixed(0)}`, 'down');
     }
   },
 
   onSellAll(assetId) {
     const asset = market.getAsset(assetId);
     if (!asset || asset.owned === 0) { renderer.showToast('Nothing to sell!', 'error'); return; }
-    const result = player.sell(assetId, asset.owned, market);
+    const qty = asset.owned;
+    const result = player.sell(assetId, qty, market);
     renderer.showToast(result.message, result.success ? 'success' : 'error');
     if (result.success) {
       eventSystem.addEntry(result.message);
       renderer.showToast(getTradeInsight(asset, 'sell'), 'info');
+      renderer.animateTrade(assetId, `+${(asset.price * qty).toFixed(0)}`, 'up');
     }
   },
 
@@ -162,13 +168,24 @@ const idleSystem = new IdleSystem(market, player, eventSystem, upgradeSystem, sa
   },
 
   onEvent(entry) {
-    renderer.showToast(entry.message, entry.severity === 'bad' ? 'error' : entry.severity === 'good' ? 'success' : 'chaos');
+    const type = entry.severity === 'bad' ? 'error' : entry.severity === 'good' ? 'success' : 'chaos';
+    renderer.showToast(entry.message, type);
+    renderer.showEventPopup(entry);
+    if (entry.severity === 'bad') screenFlash('bad');
+    else if (entry.severity === 'good') screenFlash('good');
+    else if (entry.severity === 'chaos') screenFlash('chaos');
   },
 
   onUnlock(name) {
     renderer.showToast(`🔓 New asset unlocked: ${name}!`, 'success');
     eventSystem.addEntry(`🔓 New asset unlocked: ${name}!`, 'good');
   },
+});
+
+// ── Insight panel trigger ─────────────────────────────────────────────────────
+
+document.addEventListener('open-insight', (e) => {
+  renderer.showInsightPanel((e as CustomEvent<string>).detail, market);
 });
 
 // ── Start ─────────────────────────────────────────────────────────────────────

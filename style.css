@@ -715,3 +715,330 @@ body {
 ::-webkit-scrollbar { width: 5px; }
 ::-webkit-scrollbar-track { background: var(--bg); }
 ::-webkit-scrollbar-thumb { background: var(--border-hi); border-radius: 3px; }
+
+/* ── Helper: muted colour ────────────────────────────────────────────────────── */
+.muted { color: var(--text-muted); }
+
+/* ── Mini indicator bars ─────────────────────────────────────────────────────── */
+
+.asset-indicators {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 5px;
+  flex-wrap: wrap;
+}
+
+.ind-item {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.ind-icon { font-size: 10px; line-height: 1; }
+
+.ind-bar {
+  width: 44px;
+  height: 4px;
+  background: rgba(255,255,255,0.07);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.ind-fill {
+  height: 100%;
+  border-radius: 2px;
+  transition: width 0.45s ease;
+}
+
+.ind-hype-fill { background: var(--yellow); }
+.ind-stab-fill { background: var(--green); }
+.ind-risk-fill { background: var(--red); }
+
+/* ── Momentum arrow ──────────────────────────────────────────────────────────── */
+
+.mom-arrow {
+  font-size: 11px;
+  font-weight: bold;
+  transition: color 0.3s;
+  line-height: 1;
+}
+
+.mom-strong { font-size: 13px; letter-spacing: -0.02em; }
+
+/* ── Analyse button ──────────────────────────────────────────────────────────── */
+
+.btn-analyse {
+  width: 22px;
+  height: 22px;
+  font-size: 11px;
+  padding: 0;
+  border-radius: 4px;
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: border-color 0.15s, color 0.15s;
+  flex-shrink: 0;
+}
+.btn-analyse:hover { border-color: var(--blue); color: var(--blue); }
+
+/* ── Price flash ─────────────────────────────────────────────────────────────── */
+
+@keyframes flash-up {
+  0%   { background: rgba(61,220,132,0.35); }
+  100% { background: transparent; }
+}
+@keyframes flash-down {
+  0%   { background: rgba(255,82,82,0.35); }
+  100% { background: transparent; }
+}
+
+.flash-up   { animation: flash-up   0.6s ease-out forwards; border-radius: 3px; }
+.flash-down { animation: flash-down 0.6s ease-out forwards; border-radius: 3px; }
+
+/* ── Floating buy/sell text ──────────────────────────────────────────────────── */
+
+.float-text {
+  position: fixed;
+  font-family: var(--font);
+  font-size: 12px;
+  font-weight: bold;
+  pointer-events: none;
+  z-index: 9998;
+  transform: translateX(-50%);
+  white-space: nowrap;
+  animation: float-rise 1.2s ease-out forwards;
+}
+.float-up   { color: var(--green); }
+.float-down { color: var(--red); }
+
+@keyframes float-rise {
+  0%   { opacity: 1; transform: translateX(-50%) translateY(0); }
+  80%  { opacity: 0.7; transform: translateX(-50%) translateY(-38px); }
+  100% { opacity: 0; transform: translateX(-50%) translateY(-52px); }
+}
+
+/* ── Button pulse ────────────────────────────────────────────────────────────── */
+
+@keyframes btn-pulse {
+  0%   { transform: scale(1); }
+  35%  { transform: scale(0.88); }
+  65%  { transform: scale(1.08); }
+  100% { transform: scale(1); }
+}
+.btn-pulse { animation: btn-pulse 0.22s ease-out forwards; }
+
+/* ── Screen flash ────────────────────────────────────────────────────────────── */
+
+#screen-flash {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 9989;
+}
+@keyframes screen-flash {
+  0%   { opacity: 0.25; }
+  100% { opacity: 0; }
+}
+.sf-active            { animation: screen-flash 0.7s ease-out forwards; }
+.sf-good              { background: var(--green); }
+.sf-bad               { background: var(--red); }
+.sf-chaos             { background: var(--purple); }
+
+/* ── Risk flicker & hype glow (CSS-only, toggled by JS class) ────────────────── */
+
+@keyframes risk-flicker {
+  0%,100% { border-color: var(--border); }
+  50%     { border-color: rgba(255,82,82,0.6); box-shadow: 0 0 8px rgba(255,82,82,0.2); }
+}
+.risk-high { animation: risk-flicker 1.8s ease-in-out infinite; }
+
+@keyframes hype-glow {
+  0%,100% { box-shadow: 0 0 3px rgba(255,217,102,0.45); }
+  50%     { box-shadow: 0 0 10px rgba(255,217,102,0.95); }
+}
+.hype-high .ind-hype-fill { animation: hype-glow 1.1s ease-in-out infinite; }
+
+/* ── Insight panel ───────────────────────────────────────────────────────────── */
+
+.insight-bg {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.45);
+  backdrop-filter: blur(2px);
+  z-index: 1100;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.25s;
+}
+.insight-bg.visible { opacity: 1; pointer-events: all; }
+
+.insight-panel {
+  position: fixed;
+  right: 0;
+  top: 0;
+  bottom: 0;
+  width: 320px;
+  background: var(--bg-panel);
+  border-left: 1px solid var(--border-hi);
+  z-index: 1101;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 20px 18px;
+  transform: translateX(100%);
+  transition: transform 0.3s cubic-bezier(0.32, 0.72, 0, 1);
+  overflow-y: auto;
+}
+.insight-panel.visible { transform: translateX(0); }
+
+@media (max-width: 600px) {
+  .insight-panel { width: 100%; border-left: none; border-top: 1px solid var(--border-hi); }
+}
+
+.ip-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.ip-emoji { font-size: 28px; line-height: 1; }
+
+.ip-meta { flex: 1; display: flex; flex-direction: column; gap: 2px; }
+
+.ip-name       { font-weight: bold; font-size: 15px; color: var(--text); }
+.ip-price-val  { font-size: 12px; color: var(--text-muted); }
+
+.ip-bars { display: flex; flex-direction: column; gap: 11px; }
+
+.ip-bar-row {
+  display: grid;
+  grid-template-columns: 82px 1fr 36px;
+  align-items: center;
+  gap: 8px;
+}
+
+.ip-bar-label { font-size: 11px; color: var(--text-muted); white-space: nowrap; }
+
+.ip-track {
+  height: 8px;
+  background: rgba(255,255,255,0.06);
+  border-radius: 4px;
+  overflow: hidden;
+  position: relative;
+}
+
+.ip-fill {
+  height: 100%;
+  border-radius: 4px;
+  width: 0%;
+  transition: width 0.65s cubic-bezier(0.34, 1.3, 0.64, 1);
+}
+
+.ip-hype-fill { background: linear-gradient(90deg, #ffd966, #ffb020); }
+.ip-stab-fill { background: linear-gradient(90deg, #3ddc84, #22c55e); }
+.ip-risk-fill { background: linear-gradient(90deg, #ff5252, #ef4444); }
+
+.ip-mom-track  { overflow: visible; }
+.ip-mom-center {
+  position: absolute;
+  left: 50%;
+  top: -1px;
+  bottom: -1px;
+  width: 1px;
+  background: rgba(255,255,255,0.3);
+  z-index: 1;
+}
+.ip-mom-fill { background: linear-gradient(90deg, var(--yellow), var(--gold)); }
+
+.ip-pct       { font-size: 11px; font-weight: bold; color: var(--text); text-align: right; }
+.ip-arrow-val { font-size: 15px; line-height: 1; }
+
+.ip-text {
+  font-size: 12px;
+  color: var(--text);
+  line-height: 1.55;
+  padding: 10px 13px;
+  background: var(--bg-card);
+  border-radius: 6px;
+  border-left: 3px solid var(--accent);
+}
+
+/* ── Event popup area ────────────────────────────────────────────────────────── */
+
+#event-popup-area {
+  position: fixed;
+  bottom: 70px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 9985;
+  display: flex;
+  flex-direction: column-reverse;
+  gap: 6px;
+  align-items: center;
+  pointer-events: none;
+  width: 440px;
+  max-width: 95vw;
+}
+
+.event-popup {
+  padding: 10px 16px;
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 500;
+  background: var(--bg-panel);
+  border: 1px solid var(--border-hi);
+  box-shadow: 0 6px 24px rgba(0,0,0,0.5);
+  color: var(--text);
+  pointer-events: all;
+  opacity: 0;
+  transform: translateY(12px) scale(0.96);
+  transition: opacity 0.28s ease, transform 0.28s ease;
+  text-align: center;
+  max-width: 100%;
+}
+.event-popup.visible    { opacity: 1; transform: translateY(0) scale(1); }
+.event-popup.dismissing {
+  opacity: 0;
+  transform: translateY(-8px) scale(0.95);
+  transition: opacity 0.38s ease, transform 0.38s ease;
+}
+
+.popup-good    { border-color: var(--green);  color: var(--green); }
+.popup-bad     { border-color: var(--red);    color: var(--red); }
+.popup-chaos   { border-color: var(--purple); color: var(--purple); }
+.popup-neutral { border-color: var(--border); color: var(--text-muted); }
+
+/* ── Intel scanner sweep ─────────────────────────────────────────────────────── */
+
+.intel-content-wrap { position: relative; }
+
+.intel-scanner-line {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: linear-gradient(90deg, transparent, var(--blue), transparent);
+  box-shadow: 0 0 10px var(--blue);
+  animation: scanner-sweep 1.4s ease-in-out forwards;
+  pointer-events: none;
+  z-index: 10;
+  top: 0;
+}
+
+@keyframes scanner-sweep {
+  0%   { top: 0;    opacity: 1; }
+  88%  { opacity: 1; }
+  100% { top: 100%; opacity: 0; }
+}
+
+.scan-pending  { opacity: 0; transform: translateX(-8px); }
+.scan-revealed {
+  opacity: 1;
+  transform: translateX(0);
+  transition: opacity 0.22s ease, transform 0.22s ease;
+}
