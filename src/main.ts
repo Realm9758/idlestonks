@@ -6,6 +6,8 @@ import { UpgradeSystem } from './systems/UpgradeSystem.ts';
 import { SaveSystem } from './systems/SaveSystem.ts';
 import { IdleSystem } from './systems/IdleSystem.ts';
 import { RankSystem } from './systems/RankSystem.ts';
+import { BlackMarketSystem } from './systems/BlackMarketSystem.ts';
+import { BlackMarketPanel } from './ui/BlackMarketPanel.ts';
 import { Renderer } from './ui/render.ts';
 import { getTradeInsight } from './ui/components.ts';
 import { screenFlash, screenShake } from './ui/animations.ts';
@@ -19,20 +21,50 @@ const newsSystem    = new NewsSystem();
 const upgradeSystem = new UpgradeSystem();
 const saveSystem    = new SaveSystem();
 const rankSystem    = new RankSystem();
+const bmSystem      = new BlackMarketSystem();
 
 // ── Idle system ───────────────────────────────────────────────────────────────
 // Created before renderer so save restoration can set day state before first render.
+
+let lastBmDay = -1;
 
 const idleSystem = new IdleSystem(
   market, player, eventSystem, upgradeSystem, saveSystem,
   { // callbacks
     onTick(tick, day, secondsInDay, secondsPerDay) {
-      const { rankUp, newRank } = rankSystem.checkRankUp(player.getNetWorth(market));
+      const nw = player.getNetWorth(market);
+
+      // Rank-up check
+      const { rankUp, newRank } = rankSystem.checkRankUp(nw);
       if (rankUp && newRank) {
         renderer.showRankUp(newRank);
         screenFlash('good');
         eventSystem.addEntry(`🎖 Rank up: ${newRank.name}!`, 'good');
       }
+
+      // BM unlock check
+      if (!bmSystem.unlocked && rankSystem.isFeatureUnlocked('black_market', nw)) {
+        bmSystem.unlock();
+        renderer.showBlackMarketUnlock();
+        eventSystem.addEntry('🕵️ Black Market unlocked. Check your messages.', 'good');
+      }
+
+      // BM per-second tick
+      bmSystem.tickSecond();
+      bmPanel.updateDisplay();
+
+      // BM day-boundary tick
+      if (day !== lastBmDay) {
+        lastBmDay = day;
+        const consequence = bmSystem.dayTick();
+        if (consequence) {
+          if (consequence.type === 'fine') player.cash = Math.max(0, player.cash - (consequence.fineAmount ?? 0));
+          renderer.showToast(consequence.message, 'error');
+          renderer.showEventPopup({ id: Date.now(), timestamp: Date.now(), message: consequence.message, severity: 'bad' });
+          screenFlash('bad');
+        }
+      }
+
       renderer.update(market, player, eventSystem, upgradeSystem, tick, day, secondsInDay, secondsPerDay, newsSystem, rankSystem);
     },
 
@@ -75,13 +107,14 @@ const idleSystem = new IdleSystem(
   },
   newsSystem,
   rankSystem,
+  bmSystem,
 );
 
 // ── Restore save ──────────────────────────────────────────────────────────────
 
 const savedData = saveSystem.load();
 if (savedData) {
-  saveSystem.applyLoad(savedData, player, market, upgradeSystem, idleSystem, newsSystem, rankSystem);
+  saveSystem.applyLoad(savedData, player, market, upgradeSystem, idleSystem, newsSystem, rankSystem, bmSystem);
   market.checkUnlocks(player.getNetWorth(market));
   if (upgradeSystem.hasPurchased('volatility_damper')) market.applyVolatilityDamper();
   if (upgradeSystem.hasPurchased('time_warp')) idleSystem.applyTimeWarp();
@@ -203,7 +236,7 @@ const renderer = new Renderer({
 
     renderer.showToast(`⭐ PRESTIGE #${upgradeSystem.prestigeCount}! ${upgradeSystem.getEarningsMultiplier()}× multiplier active!`, 'success');
     eventSystem.addEntry(`⭐ PRESTIGE! The cycle begins anew with ×${upgradeSystem.getEarningsMultiplier()} multiplier.`, 'good');
-    saveSystem.save(player, market, upgradeSystem, idleSystem, newsSystem, rankSystem);
+    saveSystem.save(player, market, upgradeSystem, idleSystem, newsSystem, rankSystem, bmSystem);
   },
 
   onDarkModeToggle() {
@@ -228,7 +261,23 @@ const renderer = new Renderer({
     if (!ok) renderer.showToast('Need $150 to skip a day!', 'error');
     else renderer.showToast('⏩ Day skipped!', 'info');
   },
+
+  onSetCash(amount: number) {
+    player.cash = amount;
+  },
 });
+
+// ── Black market panel ────────────────────────────────────────────────────────
+
+const bmPanel = new BlackMarketPanel(bmSystem);
+bmPanel.mount(document.getElementById('bm-panel-mount')!, {
+  showToast: (msg, type) => renderer.showToast(msg, type as 'success' | 'error' | 'info' | 'chaos'),
+  addCash:   (amt) => { player.cash += amt; },
+  deductCash:(amt) => { player.cash = Math.max(0, player.cash - amt); },
+  openBmTab: () => renderer.switchTab('bm'),
+});
+renderer.setBmPanel(bmPanel);
+if (bmSystem.unlocked) renderer.revealBlackMarketTab();
 
 // ── Insight panel trigger ─────────────────────────────────────────────────────
 

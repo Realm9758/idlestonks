@@ -4,6 +4,7 @@ import type { EventSystem, EventLogEntry } from '../core/EventSystem.ts';
 import type { NewsSystem, NewsItem } from '../core/NewsSystem.ts';
 import type { UpgradeSystem } from '../systems/UpgradeSystem.ts';
 import type { RankSystem, Rank } from '../systems/RankSystem.ts';
+import type { BlackMarketPanel } from './BlackMarketPanel.ts';
 import type { Asset } from '../core/Asset.ts';
 import {
   formatCurrency, formatPct, timeAgo, createEl,
@@ -26,6 +27,7 @@ export interface RenderCallbacks {
   onShowManipulateModal: () => void;
   onShowMarketIntel: () => void;
   onSkipDay: () => void;
+  onSetCash: (amount: number) => void;
 }
 
 interface Toast { el: HTMLElement; removeAt: number; }
@@ -72,6 +74,10 @@ export class Renderer {
 
   // Rank system
   private storedRankSystem: RankSystem | null = null;
+
+  // Black market
+  private bmPanel: BlackMarketPanel | null = null;
+  private currentTab: 'main' | 'bm' = 'main';
 
   // News change-detection
   private newsActiveKey = '';
@@ -139,6 +145,11 @@ export class Renderer {
       <button id="btn-dark" class="btn-icon" title="Toggle dark mode">🌙</button>
     </div>
   </header>
+
+  <div id="tab-bar">
+    <button class="tab-btn tab-active" data-tab="main">📊 Market</button>
+    <button class="tab-btn tab-locked" data-tab="bm" id="tab-bm">🔒 Classified</button>
+  </div>
 
   <div id="ticker-bar">
     <span class="ticker-label">📡 BREAKING</span>
@@ -216,6 +227,11 @@ export class Renderer {
       <button id="btn-prestige" class="btn btn-prestige hidden">⭐ PRESTIGE</button>
       <button id="btn-clear" class="btn btn-ghost-sm">🗑️ Reset Game</button>
     </div>
+    <div id="debug-cash-bar">
+      <span class="debug-label">🛠 DEBUG</span>
+      <input id="debug-cash-input" type="number" placeholder="Set cash..." min="0" step="1000" />
+      <button id="debug-cash-btn" class="btn btn-ghost-sm">Set Cash</button>
+    </div>
   </footer>
 
   <!-- Manipulate modal -->
@@ -269,6 +285,9 @@ export class Renderer {
       <div id="np-feed" class="np-feed"></div>
     </div>
   </div>
+
+  <!-- Black market mount point -->
+  <div id="bm-panel-mount" class="hidden"></div>
 
   <!-- Insight panel background -->
   <div id="insight-bg" class="insight-bg"></div>
@@ -346,11 +365,24 @@ export class Renderer {
       if (isOpen) { this.newsExpandedIds.delete(id); body.classList.add('hidden'); btn.textContent = '▼ Details'; }
       else         { this.newsExpandedIds.add(id);    body.classList.remove('hidden'); btn.textContent = '▲ Hide'; }
     });
+    document.getElementById('tab-bar')!.addEventListener('click', (e) => {
+      const btn = (e.target as HTMLElement).closest<HTMLElement>('[data-tab]');
+      if (!btn || btn.classList.contains('tab-locked')) return;
+      this.switchTab(btn.dataset.tab as 'main' | 'bm');
+    });
     document.getElementById('btn-dark')!.addEventListener('click', () => this.callbacks.onDarkModeToggle());
     document.getElementById('btn-skip-day')!.addEventListener('click', () => this.callbacks.onSkipDay());
     document.getElementById('btn-prestige')!.addEventListener('click', () => this.callbacks.onPrestige());
     document.getElementById('btn-clear')!.addEventListener('click', () => {
       if (confirm('Reset ALL progress? This cannot be undone.')) this.callbacks.onClearSave();
+    });
+    document.getElementById('debug-cash-btn')!.addEventListener('click', () => {
+      const input = document.getElementById('debug-cash-input') as HTMLInputElement;
+      const val = parseFloat(input.value);
+      if (!isNaN(val) && val >= 0) { this.callbacks.onSetCash(val); input.value = ''; this.showToast(`🛠 Cash set to $${val.toLocaleString()}`, 'info'); }
+    });
+    (document.getElementById('debug-cash-input') as HTMLInputElement).addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') (document.getElementById('debug-cash-btn') as HTMLButtonElement).click();
     });
 
     document.addEventListener('keydown', (e) => {
@@ -1349,6 +1381,35 @@ export class Renderer {
       }
       return true;
     });
+  }
+
+  // ── Black market ──────────────────────────────────────────────────────────
+
+  setBmPanel(panel: BlackMarketPanel): void {
+    this.bmPanel = panel;
+  }
+
+  switchTab(tab: 'main' | 'bm'): void {
+    this.currentTab = tab;
+    document.getElementById('main-grid')!.classList.toggle('hidden', tab !== 'main');
+    document.getElementById('bm-panel-mount')!.classList.toggle('hidden', tab !== 'bm');
+    document.querySelectorAll<HTMLElement>('#tab-bar [data-tab]').forEach(btn => {
+      btn.classList.toggle('tab-active', btn.dataset.tab === tab);
+    });
+    if (tab === 'bm' && this.bmPanel && !this.bmPanel.tutorialStarted) {
+      this.bmPanel.playTutorial();
+    }
+  }
+
+  showBlackMarketUnlock(): void {
+    const btn = document.getElementById('tab-bm');
+    if (btn) { btn.textContent = '🕵️ Black Market'; btn.classList.remove('tab-locked'); }
+    this.bmPanel?.triggerUnlockNotif();
+  }
+
+  revealBlackMarketTab(): void {
+    const btn = document.getElementById('tab-bm');
+    if (btn) { btn.textContent = '🕵️ Black Market'; btn.classList.remove('tab-locked'); }
   }
 
   // ── Dark mode ─────────────────────────────────────────────────────────────

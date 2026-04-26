@@ -5,6 +5,7 @@ import type { NewsSystem, NewsItem, NewsResolution } from '../core/NewsSystem.ts
 import type { UpgradeSystem } from './UpgradeSystem.ts';
 import type { SaveSystem } from './SaveSystem.ts';
 import type { RankSystem } from './RankSystem.ts';
+import type { BlackMarketSystem } from './BlackMarketSystem.ts';
 
 export interface IdleCallbacks {
   onTick: (tick: number, day: number, secondsInDay: number, secondsPerDay: number) => void;
@@ -32,6 +33,7 @@ export class IdleSystem {
     private readonly callbacks: IdleCallbacks,
     private readonly newsSystem?: NewsSystem,
     private readonly rankSystem?: RankSystem,
+    private readonly blackMarketSystem?: BlackMarketSystem,
   ) {}
 
   start(): void {
@@ -83,7 +85,7 @@ export class IdleSystem {
     }
 
     // Auto-save every 5 ticks
-    this.saveSystem.tick(this.player, this.market, this.upgradeSystem, this, this.newsSystem, this.rankSystem);
+    this.saveSystem.tick(this.player, this.market, this.upgradeSystem, this, this.newsSystem, this.rankSystem, this.blackMarketSystem);
 
     this.callbacks.onTick(this.tickCount, this.dayCount, this.secondsInDay, this.secondsPerDay);
   }
