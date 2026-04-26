@@ -10,6 +10,8 @@ import { BlackMarketSystem } from './systems/BlackMarketSystem.ts';
 import { InvestorSystem } from './systems/InvestorSystem.ts';
 import { BlackMarketPanel } from './ui/BlackMarketPanel.ts';
 import { Renderer } from './ui/render.ts';
+import { TutorialSystem } from './systems/TutorialSystem.ts';
+import { TutorialOverlay } from './ui/TutorialOverlay.ts';
 import { getTradeInsight } from './ui/components.ts';
 import { screenFlash, screenShake } from './ui/animations.ts';
 
@@ -24,6 +26,8 @@ const saveSystem      = new SaveSystem();
 const rankSystem      = new RankSystem();
 const bmSystem        = new BlackMarketSystem();
 const investorSystem  = new InvestorSystem();
+const tutorialSystem  = new TutorialSystem();
+const tutorialHasSave = tutorialSystem.load();
 
 // ── Idle system ───────────────────────────────────────────────────────────────
 // Created before renderer so save restoration can set day state before first render.
@@ -135,6 +139,7 @@ const renderer = new Renderer({
       eventSystem.addEntry(result.message);
       renderer.showToast(getTradeInsight(asset, 'buy'), 'info');
       renderer.animateTrade(assetId, `-${(asset.price * qty).toFixed(0)}`, 'down');
+      tutorialSystem.notifyAction('buy');
     }
   },
 
@@ -146,6 +151,7 @@ const renderer = new Renderer({
       eventSystem.addEntry(result.message);
       renderer.showToast(getTradeInsight(asset, 'sell'), 'info');
       renderer.animateTrade(assetId, `+${(asset.price * qty).toFixed(0)}`, 'up');
+      tutorialSystem.notifyAction('sell');
     }
   },
 
@@ -160,6 +166,7 @@ const renderer = new Renderer({
       eventSystem.addEntry(result.message);
       renderer.showToast(getTradeInsight(asset, 'buy'), 'info');
       renderer.animateTrade(assetId, `-${(asset.price * qty).toFixed(0)}`, 'down');
+      tutorialSystem.notifyAction('buy');
     }
   },
 
@@ -173,6 +180,7 @@ const renderer = new Renderer({
       eventSystem.addEntry(result.message);
       renderer.showToast(getTradeInsight(asset, 'sell'), 'info');
       renderer.animateTrade(assetId, `+${(asset.price * qty).toFixed(0)}`, 'up');
+      tutorialSystem.notifyAction('sell');
     }
   },
 
@@ -249,6 +257,7 @@ const renderer = new Renderer({
 
   onClearSave() {
     saveSystem.clearSave();
+    tutorialSystem.clearSave();
     location.reload();
   },
 
@@ -300,6 +309,12 @@ bmPanel.mount(document.getElementById('bm-panel-mount')!, {
 });
 renderer.setBmPanel(bmPanel);
 if (bmSystem.unlocked) renderer.revealBlackMarketTab();
+
+// ── Tutorial ──────────────────────────────────────────────────────────────────
+// Returning players who existed before tutorial feature → skip automatically.
+if (savedData && !tutorialHasSave) tutorialSystem.skip();
+const tutorialOverlay = new TutorialOverlay(tutorialSystem);
+tutorialOverlay.init();
 
 // ── Insight panel trigger ─────────────────────────────────────────────────────
 
