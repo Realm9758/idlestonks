@@ -1,6 +1,7 @@
 import type { BlackMarketSystem, BmCustomer, CallMods } from '../systems/BlackMarketSystem.ts';
 import { screenShake } from './animations.ts';
 import { screenFlash } from './animations.ts';
+import { SocialMediaPanel } from './SocialMediaPanel.ts';
 
 export interface BmCallbacks {
   showToast:    (msg: string, type: 'success' | 'error' | 'info' | 'chaos') => void;
@@ -202,8 +203,9 @@ interface CallState {
 }
 
 export class BlackMarketPanel {
-  private sys: BlackMarketSystem;
-  private cb: BmCallbacks | null = null;
+  private sys:         BlackMarketSystem;
+  private cb:          BmCallbacks | null = null;
+  private socialPanel: SocialMediaPanel | null = null;
   private lastCustomerCount = -1;
   tutorialStarted = false;
 
@@ -218,7 +220,18 @@ export class BlackMarketPanel {
     container.innerHTML = this._panelHtml();
     this._appendFixed();
     this._wireEvents();
+    this._mountSocialPanel();
     this.updateDisplay();
+  }
+
+  private _mountSocialPanel(): void {
+    const mount = document.getElementById('sm-panel-mount');
+    if (!mount) return;
+    this.socialPanel = new SocialMediaPanel(this.sys, {
+      showToast: (msg, type) => this.cb!.showToast(msg, type),
+      addCash:   (amt)       => this.cb!.addCash(amt),
+    });
+    this.socialPanel.mount(mount);
   }
 
   // ── HTML builders ──────────────────────────────────────────────────────────
@@ -226,72 +239,85 @@ export class BlackMarketPanel {
   private _panelHtml(): string {
     return `
 <div class="bm-panel-inner">
-  <div class="bm-layout">
-    <div class="bm-chat-col">
-      <div class="bm-chat-header">
-        <div class="bm-chat-contact-row">
-          <span class="bm-contact-dot">●</span>
-          <span class="bm-contact-name">bro_crypto</span>
-        </div>
-        <span class="bm-contact-status">online</span>
-      </div>
-      <div id="bm-chat-messages" class="bm-chat-messages"></div>
-    </div>
 
-    <div class="bm-ops-col">
-      <div class="bm-stock-card">
-        <div class="bm-stock-header">
-          <span class="bm-coin-name">🌑 MoonCoin</span>
-          <span class="bm-coin-tag">SYNTHETIC</span>
-        </div>
-        <div id="bm-price" class="bm-price">$0.0100</div>
-        <div class="bm-hype-row">
-          <span class="bm-hype-label">HYPE</span>
-          <div class="bm-hype-track"><div id="bm-hype-fill" class="bm-hype-fill" style="width:5%"></div></div>
-        </div>
-        <div class="bm-invested-row">
-          <span class="bm-invested-label">TOTAL INVESTED</span>
-          <span id="bm-total-invested" class="bm-invested-val">$0</span>
-        </div>
-      </div>
-      <div class="bm-customers-header">👥 Targets</div>
-      <div id="bm-customers" class="bm-customers"></div>
-      <button id="btn-rug-pull" class="btn-rug-pull" disabled>
-        <span class="rug-icon">💀</span>
-        <span class="rug-text">RUG PULL</span>
-      </button>
-    </div>
+  <div class="bm-tab-bar">
+    <button class="bm-nav-tab bm-nav-active" data-bm-tab="calls">📞 Calls</button>
+    <button class="bm-nav-tab" data-bm-tab="social">📱 Social Media</button>
+  </div>
 
-    <div class="bm-risk-col">
-      <div class="bm-risk-title">🌡️ HEAT LEVEL</div>
-      <div class="bm-risk-meter-wrap">
-        <div id="bm-risk-fill" class="bm-risk-fill risk-low" style="height:0%"></div>
+  <div class="bm-tab-pane" id="bm-pane-calls">
+    <div class="bm-layout">
+      <div class="bm-chat-col">
+        <div class="bm-chat-header">
+          <div class="bm-chat-contact-row">
+            <span class="bm-contact-dot">●</span>
+            <span class="bm-contact-name">bro_crypto</span>
+          </div>
+          <span class="bm-contact-status">online</span>
+        </div>
+        <div id="bm-chat-messages" class="bm-chat-messages"></div>
       </div>
-      <div id="bm-risk-label" class="bm-risk-label">0%</div>
-      <div id="bm-risk-warn" class="bm-risk-warn hidden">⚠️ HIGH HEAT</div>
-      <div class="bm-divider"></div>
-      <div class="bm-stat-row">
-        <span class="bm-stat-lbl">CALLS TODAY</span>
-        <span id="bm-calls-today" class="bm-stat-val">0 / 5</span>
+
+      <div class="bm-ops-col">
+        <div class="bm-stock-card">
+          <div class="bm-stock-header">
+            <span class="bm-coin-name">🌑 MoonCoin</span>
+            <span class="bm-coin-tag">SYNTHETIC</span>
+          </div>
+          <div id="bm-price" class="bm-price">$0.0100</div>
+          <div class="bm-hype-row">
+            <span class="bm-hype-label">HYPE</span>
+            <div class="bm-hype-track"><div id="bm-hype-fill" class="bm-hype-fill" style="width:5%"></div></div>
+          </div>
+          <div class="bm-invested-row">
+            <span class="bm-invested-label">TOTAL INVESTED</span>
+            <span id="bm-total-invested" class="bm-invested-val">$0</span>
+          </div>
+        </div>
+        <div class="bm-customers-header">👥 Targets</div>
+        <div id="bm-customers" class="bm-customers"></div>
+        <button id="btn-rug-pull" class="btn-rug-pull" disabled>
+          <span class="rug-icon">💀</span>
+          <span class="rug-text">RUG PULL</span>
+        </button>
       </div>
-      <div class="bm-stat-row">
-        <span class="bm-stat-lbl">COOLDOWN</span>
-        <span id="bm-cooldown" class="bm-stat-val">—</span>
-      </div>
-      <div class="bm-stat-row">
-        <span class="bm-stat-lbl">TOTAL PROFIT</span>
-        <span id="bm-profit" class="bm-stat-val bm-neon-green">$0</span>
-      </div>
-      <div class="bm-stat-row">
-        <span class="bm-stat-lbl">RUG PULLS</span>
-        <span id="bm-rug-count" class="bm-stat-val">0</span>
-      </div>
-      <div id="bm-suspended-notice" class="bm-suspended-notice hidden">
-        🚫 SUSPENDED<br>
-        <span id="bm-lock-days" class="bm-lock-days">—</span>
+
+      <div class="bm-risk-col">
+        <div class="bm-risk-title">🌡️ HEAT LEVEL</div>
+        <div class="bm-risk-meter-wrap">
+          <div id="bm-risk-fill" class="bm-risk-fill risk-low" style="height:0%"></div>
+        </div>
+        <div id="bm-risk-label" class="bm-risk-label">0%</div>
+        <div id="bm-risk-warn" class="bm-risk-warn hidden">⚠️ HIGH HEAT</div>
+        <div class="bm-divider"></div>
+        <div class="bm-stat-row">
+          <span class="bm-stat-lbl">CALLS TODAY</span>
+          <span id="bm-calls-today" class="bm-stat-val">0 / 5</span>
+        </div>
+        <div class="bm-stat-row">
+          <span class="bm-stat-lbl">COOLDOWN</span>
+          <span id="bm-cooldown" class="bm-stat-val">—</span>
+        </div>
+        <div class="bm-stat-row">
+          <span class="bm-stat-lbl">TOTAL PROFIT</span>
+          <span id="bm-profit" class="bm-stat-val bm-neon-green">$0</span>
+        </div>
+        <div class="bm-stat-row">
+          <span class="bm-stat-lbl">RUG PULLS</span>
+          <span id="bm-rug-count" class="bm-stat-val">0</span>
+        </div>
+        <div id="bm-suspended-notice" class="bm-suspended-notice hidden">
+          🚫 SUSPENDED<br>
+          <span id="bm-lock-days" class="bm-lock-days">—</span>
+        </div>
       </div>
     </div>
   </div>
+
+  <div class="bm-tab-pane hidden" id="bm-pane-social">
+    <div id="sm-panel-mount" style="flex:1;min-height:0;display:flex;flex-direction:column;overflow:hidden"></div>
+  </div>
+
 </div>`;
   }
 
@@ -351,6 +377,17 @@ export class BlackMarketPanel {
 
   private _wireEvents(): void {
     const cb = this.cb!;
+
+    // ── Tab switching ───────────────────────────────────────────────────────
+    document.querySelectorAll<HTMLElement>('[data-bm-tab]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const tab = btn.dataset.bmTab!;
+        document.querySelectorAll('[data-bm-tab]').forEach(b => b.classList.remove('bm-nav-active'));
+        btn.classList.add('bm-nav-active');
+        document.getElementById('bm-pane-calls')?.classList.toggle('hidden', tab !== 'calls');
+        document.getElementById('bm-pane-social')?.classList.toggle('hidden', tab !== 'social');
+      });
+    });
 
     document.getElementById('bm-unlock-notif')?.addEventListener('click', () => this._openMessenger());
     document.getElementById('bm-messenger-close')?.addEventListener('click', () => {
@@ -690,6 +727,7 @@ export class BlackMarketPanel {
     if (rugBtn) rugBtn.disabled = !s.canRugPull();
 
     this._updateCustomerCards();
+    this.socialPanel?.updateDisplay();
   }
 
   private _updateCustomerCards(): void {

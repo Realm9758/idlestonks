@@ -1,3 +1,7 @@
+import type { SocialPost, SocialPlatform, SocialPostType, PostOutcome } from './SocialPost.ts';
+import { PLATFORM_META, POST_TYPE_META } from './SocialPost.ts';
+export type { SocialPost, SocialPlatform, SocialPostType, PostOutcome };
+
 export interface BmCustomer {
   id: string;
   name: string;
@@ -45,6 +49,8 @@ export interface BmSaveState {
   rugPullCount: number;
   stock: BmStock;
   customers: { id: string; money: number; invested: number; suspicious: boolean; callCount: number }[];
+  postsToday?: number;
+  postCooldownSecs?: number;
 }
 
 const CUSTOMER_TEMPLATES: Omit<BmCustomer, 'invested' | 'suspicious' | 'callCount'>[] = [
@@ -64,9 +70,15 @@ export class BlackMarketSystem {
   reputation = 1.0;
 
   callCooldownSecs = 0;
-  readonly CALL_COOLDOWN    = 12;
+  readonly CALL_COOLDOWN     = 12;
   callsToday = 0;
   readonly MAX_CALLS_PER_DAY = 5;
+
+  posts: SocialPost[]        = [];
+  postCooldownSecs = 0;
+  readonly POST_COOLDOWN     = 20;
+  postsToday = 0;
+  readonly MAX_POSTS_PER_DAY = 8;
 
   isLocked         = false;
   lockDaysRemaining = 0;
@@ -84,6 +96,84 @@ export class BlackMarketSystem {
 
   canCall(): boolean {
     return !this.isLocked && this.callCooldownSecs <= 0 && this.callsToday < this.MAX_CALLS_PER_DAY;
+  }
+
+  canPost(): boolean {
+    return !this.isLocked && this.postCooldownSecs <= 0 && this.postsToday < this.MAX_POSTS_PER_DAY;
+  }
+
+  publishPost(platform: SocialPlatform, postType: SocialPostType, text: string): SocialPost | null {
+    if (!this.canPost()) return null;
+
+    this.postCooldownSecs = this.POST_COOLDOWN;
+    this.postsToday++;
+
+    const pm  = PLATFORM_META[platform];
+    const ptm = POST_TYPE_META[postType];
+
+    const viralChance = 0.08 + pm.viralBonus + ptm.viralBonus;
+    const roll = Math.random();
+    let outcome: PostOutcome;
+    let engMult: number;
+    let hypeMult: number;
+
+    if (roll < 0.18) {
+      outcome = 'flop';   engMult = 0.08; hypeMult = 0;
+    } else if (roll < 0.18 + viralChance) {
+      outcome = 'viral';  engMult = 9;    hypeMult = 3.5;
+    } else if (roll < 0.70) {
+      outcome = 'normal'; engMult = 1;    hypeMult = 1;
+    } else {
+      outcome = 'strong'; engMult = 2.5;  hypeMult = 1.7;
+    }
+
+    const variance    = 0.65 + Math.random() * 0.7;
+    const hypeTotal   = Math.max(0, ptm.baseHype * hypeMult * variance);
+    const riskAdded   = Math.round(ptm.baseRisk * (outcome === 'viral' ? 2.2 : outcome === 'strong' ? 1.3 : outcome === 'flop' ? 0.4 : 1));
+
+    const crowdBase: Record<PostOutcome, [number, number]> = {
+      flop:   [0,    0],
+      normal: [200,  700],
+      strong: [600,  2000],
+      viral:  [3000, 10000],
+    };
+    const [cMin, cMax] = crowdBase[outcome];
+    const crowdAmount  = Math.round(cMin + Math.random() * (cMax - cMin));
+
+    const post: SocialPost = {
+      id: `sp_${Date.now()}_${Math.floor(Math.random() * 9999)}`,
+      platform,
+      postType,
+      text,
+      likes: 0, reposts: 0, comments: 0,
+      targetLikes:    Math.max(1, Math.round(pm.baseLikes    * engMult * variance)),
+      targetReposts:  Math.max(1, Math.round(pm.baseReposts  * engMult * variance)),
+      targetComments: Math.max(1, Math.round(pm.baseComments * engMult * variance)),
+      hypeTotal,
+      riskAdded,
+      hypeApplied: 0,
+      crowdAmount,
+      outcome,
+      age: 0,
+      settled: false,
+      viralNotified: false,
+    };
+
+    this.riskLevel = Math.min(100, this.riskLevel + riskAdded);
+    this.posts.unshift(post);
+    if (this.posts.length > 15) this.posts.pop();
+
+    return post;
+  }
+
+  getStage(): 'quiet' | 'growing' | 'trending' | 'viral' | 'collapsing' {
+    const { hype, totalInvested, price } = this.stock;
+    const hasLiveViral = this.posts.some(p => p.outcome === 'viral' && !p.settled);
+    if (hype > 0.75 || hasLiveViral)          return 'viral';
+    if (hype > 0.45 || totalInvested > 4000)  return 'trending';
+    if (hype > 0.15 || totalInvested > 400)   return 'growing';
+    if (price < 0.003 && totalInvested < 50)  return 'collapsing';
+    return 'quiet';
   }
 
   // Phase 1: consume the call slot, get customer info for the conversation UI
@@ -205,14 +295,52 @@ export class BlackMarketSystem {
 
   tickSecond(): void {
     if (this.callCooldownSecs > 0) this.callCooldownSecs--;
+    if (this.postCooldownSecs  > 0) this.postCooldownSecs--;
+
     if (this.stock.price > 0.001) {
       const noise = (Math.random() - 0.48) * 0.025 * (1 + this.stock.hype);
       this.stock.price = Math.max(0.001, this.stock.price * (1 + noise));
+    }
+
+    for (const post of this.posts) {
+      if (post.settled) continue;
+      post.age++;
+
+      const rate = 0.05;
+      const newLikes    = Math.min(post.targetLikes,    Math.ceil(post.likes    + (post.targetLikes    - post.likes)    * rate));
+      const newReposts  = Math.min(post.targetReposts,  Math.ceil(post.reposts  + (post.targetReposts  - post.reposts)  * rate));
+      const newComments = Math.min(post.targetComments, Math.ceil(post.comments + (post.targetComments - post.comments) * rate));
+
+      const progress    = post.targetLikes > 0 ? newLikes / post.targetLikes : 1;
+      const deltaHype   = Math.max(0, post.hypeTotal * progress - post.hypeApplied);
+      if (deltaHype > 0.0001) {
+        post.hypeApplied        += deltaHype;
+        this.stock.hype          = Math.min(1, this.stock.hype + deltaHype * 0.007);
+        this.stock.price         = Math.max(0.001, this.stock.price * (1 + deltaHype * 0.0012));
+      }
+
+      post.likes    = newLikes;
+      post.reposts  = newReposts;
+      post.comments = newComments;
+
+      if (post.likes >= post.targetLikes || post.age > 90) {
+        post.likes    = post.targetLikes;
+        post.reposts  = post.targetReposts;
+        post.comments = post.targetComments;
+        if (!post.settled) {
+          post.settled = true;
+          if (post.crowdAmount > 0) {
+            this.stock.totalInvested += post.crowdAmount;
+            this.stock.price          = Math.max(0.001, this.stock.price * (1 + post.crowdAmount / 10000));
+          }
+        }
+      }
     }
   }
 
   dayTick(): BmConsequence | null {
     this.callsToday = 0;
+    this.postsToday = 0;
     if (this.lockDaysRemaining > 0) {
       this.lockDaysRemaining--;
       if (this.lockDaysRemaining === 0) this.isLocked = false;
@@ -249,29 +377,33 @@ export class BlackMarketSystem {
 
   saveState(): BmSaveState {
     return {
-      unlocked:     this.unlocked,
-      tutorialSeen: this.tutorialSeen,
-      riskLevel:    this.riskLevel,
-      reputation:   this.reputation,
-      totalProfit:  this.totalProfit,
-      rugPullCount: this.rugPullCount,
-      stock:        { ...this.stock },
-      customers:    this._customers.map(c => ({
+      unlocked:        this.unlocked,
+      tutorialSeen:    this.tutorialSeen,
+      riskLevel:       this.riskLevel,
+      reputation:      this.reputation,
+      totalProfit:     this.totalProfit,
+      rugPullCount:    this.rugPullCount,
+      stock:           { ...this.stock },
+      customers:       this._customers.map(c => ({
         id: c.id, money: c.money, invested: c.invested,
         suspicious: c.suspicious, callCount: c.callCount,
       })),
+      postsToday:      this.postsToday,
+      postCooldownSecs: this.postCooldownSecs,
     };
   }
 
   unlock(): void { this.unlocked = true; }
 
   loadState(s: Partial<BmSaveState>): void {
-    this.unlocked      = s.unlocked      ?? false;
-    this.tutorialSeen  = s.tutorialSeen  ?? false;
-    this.riskLevel     = s.riskLevel     ?? 0;
-    this.reputation    = s.reputation    ?? 1.0;
-    this.totalProfit   = s.totalProfit   ?? 0;
-    this.rugPullCount  = s.rugPullCount  ?? 0;
+    this.unlocked         = s.unlocked         ?? false;
+    this.tutorialSeen     = s.tutorialSeen     ?? false;
+    this.riskLevel        = s.riskLevel        ?? 0;
+    this.reputation       = s.reputation       ?? 1.0;
+    this.totalProfit      = s.totalProfit      ?? 0;
+    this.rugPullCount     = s.rugPullCount     ?? 0;
+    this.postsToday       = s.postsToday       ?? 0;
+    this.postCooldownSecs = s.postCooldownSecs ?? 0;
     if (s.stock) this.stock = { ...s.stock };
     if (s.customers) {
       for (const sc of s.customers) {
