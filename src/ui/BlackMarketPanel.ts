@@ -3,10 +3,12 @@ import { screenShake } from './animations.ts';
 import { screenFlash } from './animations.ts';
 
 export interface BmCallbacks {
-  showToast: (msg: string, type: 'success' | 'error' | 'info' | 'chaos') => void;
-  addCash:   (amount: number) => void;
-  deductCash:(amount: number) => void;
-  openBmTab: () => void;
+  showToast:    (msg: string, type: 'success' | 'error' | 'info' | 'chaos') => void;
+  addCash:      (amount: number) => void;
+  deductCash:   (amount: number) => void;
+  openBmTab:    () => void;
+  onCallStart?: () => void;
+  onCallEnd?:   () => void;
 }
 
 interface ChatMsg { side: 'left' | 'right'; text: string; }
@@ -408,6 +410,7 @@ export class BlackMarketPanel {
     // Connecting → Connected → opening line → Round 1 choices
     setTimeout(() => {
       document.getElementById('bm-call-status')!.textContent = 'CONNECTED';
+      this.cb?.onCallStart?.();
       this._showTyping();
     }, 700);
     setTimeout(() => {
@@ -520,6 +523,7 @@ export class BlackMarketPanel {
     this.sys.hangUp();
     this._callState = null;
     this._closeCallModal();
+    this.cb?.onCallEnd?.();
     this.cb?.showToast('Call ended.', 'info');
     this.updateDisplay();
   }

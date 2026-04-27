@@ -4,10 +4,12 @@ import type {
 import { screenShake, screenFlash } from './animations.ts';
 
 export interface HfCallbacks {
-  showToast:  (msg: string, type: 'success' | 'error' | 'info' | 'chaos') => void;
-  addCash:    (amount: number) => void;
-  deductCash: (amount: number) => void;
-  openHfTab:  () => void;
+  showToast:    (msg: string, type: 'success' | 'error' | 'info' | 'chaos') => void;
+  addCash:      (amount: number) => void;
+  deductCash:   (amount: number) => void;
+  openHfTab:    () => void;
+  onCallStart?: () => void;
+  onCallEnd?:   () => void;
 }
 
 interface ChatMsg { side: 'left' | 'right'; text: string; }
@@ -491,7 +493,7 @@ export class HedgeFundPanel {
 
     const lines  = INVESTOR_LINES[tmpl.id];
     const opener = isInbound ? lines.opening_in : lines.opening_out;
-    setTimeout(() => { document.getElementById('hf-call-status')!.textContent = 'CONNECTED'; this._showTyping(); }, 700);
+    setTimeout(() => { document.getElementById('hf-call-status')!.textContent = 'CONNECTED'; this.cb?.onCallStart?.(); this._showTyping(); }, 700);
     setTimeout(() => { this._removeTyping(); this._addBubble('left', opener); }, 1600);
     setTimeout(() => this._showRound1(), 2500);
   }
@@ -583,6 +585,7 @@ export class HedgeFundPanel {
     this.sys.hangUp();
     this._callState = null;
     this._closeCall();
+    this.cb?.onCallEnd?.();
     this.cb?.showToast('Call ended.', 'info');
     this.updateDisplay();
   }

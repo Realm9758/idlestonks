@@ -7,6 +7,7 @@ import type { RankSystem, Rank } from '../systems/RankSystem.ts';
 import type { InvestorSystem } from '../systems/InvestorSystem.ts';
 import type { BlackMarketPanel } from './BlackMarketPanel.ts';
 import type { HedgeFundPanel } from './HedgeFundPanel.ts';
+import type { SoundSystem } from '../systems/SoundSystem.ts';
 import type { Asset } from '../core/Asset.ts';
 import { INVESTOR_TIERS } from '../systems/InvestorSystem.ts';
 import { LEVELED_UPGRADES } from '../systems/UpgradeSystem.ts';
@@ -86,6 +87,10 @@ export class Renderer {
   private hfPanel: HedgeFundPanel | null = null;
   private currentTab: 'main' | 'upgrades' | 'bm' | 'hf' = 'main';
 
+  // Sound
+  private soundSystem: SoundSystem | null = null;
+  private soundPanelOpen = false;
+
   // Investor system
   private storedInvestorSystem: InvestorSystem | null = null;
 
@@ -158,7 +163,23 @@ export class Renderer {
     </div>
     <div class="header-actions">
       <button id="btn-intel" class="btn btn-intel">📊 Market Intel</button>
+      <button id="btn-sound" class="btn-icon" title="Sound settings">🔊</button>
       <button id="btn-dark" class="btn-icon" title="Toggle dark mode">🌙</button>
+    </div>
+    <div id="sound-panel" class="sound-panel hidden">
+      <div class="sp-row">
+        <button id="sp-mute" class="btn btn-ghost-sm sp-mute-btn">🔊 Muted: OFF</button>
+      </div>
+      <div class="sp-row">
+        <label class="sp-label">Master</label>
+        <input id="sp-master" type="range" min="0" max="1" step="0.05" value="0.5" class="sp-slider" />
+        <span id="sp-master-val" class="sp-val">50%</span>
+      </div>
+      <div class="sp-row">
+        <label class="sp-label">SFX</label>
+        <input id="sp-sfx" type="range" min="0" max="1" step="0.05" value="0.8" class="sp-slider" />
+        <span id="sp-sfx-val" class="sp-val">80%</span>
+      </div>
     </div>
   </header>
 
@@ -1648,6 +1669,44 @@ export class Renderer {
   revealHedgeFundTab(): void {
     const btn = document.getElementById('tab-hf');
     if (btn) { btn.classList.remove('tab-locked', 'hidden'); }
+  }
+
+  // ── Sound ──────────────────────────────────────────────────────────────────
+
+  setSoundSystem(ss: SoundSystem): void {
+    this.soundSystem = ss;
+    const muteBtn  = document.getElementById('sp-mute')!;
+    const master   = document.getElementById('sp-master') as HTMLInputElement;
+    const sfx      = document.getElementById('sp-sfx') as HTMLInputElement;
+    const masterV  = document.getElementById('sp-master-val')!;
+    const sfxV     = document.getElementById('sp-sfx-val')!;
+
+    const sync = () => {
+      master.value   = String(ss.masterVolume);
+      sfx.value      = String(ss.sfxVolume);
+      masterV.textContent = `${Math.round(ss.masterVolume * 100)}%`;
+      sfxV.textContent    = `${Math.round(ss.sfxVolume    * 100)}%`;
+      muteBtn.textContent = ss.muted ? '🔇 Muted: ON' : '🔊 Muted: OFF';
+      muteBtn.classList.toggle('sp-muted', ss.muted);
+    };
+    sync();
+
+    muteBtn.addEventListener('click', () => { ss.toggleMute(); sync(); });
+    master.addEventListener('input', () => { ss.setMasterVolume(parseFloat(master.value)); masterV.textContent = `${Math.round(ss.masterVolume * 100)}%`; });
+    sfx.addEventListener('input',    () => { ss.setSfxVolume(parseFloat(sfx.value));       sfxV.textContent    = `${Math.round(ss.sfxVolume    * 100)}%`; });
+
+    document.getElementById('btn-sound')!.addEventListener('click', (e) => {
+      e.stopPropagation();
+      this.soundPanelOpen = !this.soundPanelOpen;
+      document.getElementById('sound-panel')!.classList.toggle('hidden', !this.soundPanelOpen);
+    });
+    document.addEventListener('click', () => {
+      if (this.soundPanelOpen) {
+        this.soundPanelOpen = false;
+        document.getElementById('sound-panel')!.classList.add('hidden');
+      }
+    });
+    document.getElementById('sound-panel')!.addEventListener('click', (e) => e.stopPropagation());
   }
 
   // ── Dark mode ─────────────────────────────────────────────────────────────

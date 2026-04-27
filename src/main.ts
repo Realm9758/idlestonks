@@ -11,6 +11,7 @@ import { InvestorSystem } from './systems/InvestorSystem.ts';
 import { BlackMarketPanel } from './ui/BlackMarketPanel.ts';
 import { HedgeFundSystem } from './systems/HedgeFundSystem.ts';
 import { HedgeFundPanel } from './ui/HedgeFundPanel.ts';
+import { SoundSystem } from './systems/SoundSystem.ts';
 import { Renderer } from './ui/render.ts';
 import { TutorialSystem } from './systems/TutorialSystem.ts';
 import { TutorialOverlay } from './ui/TutorialOverlay.ts';
@@ -29,6 +30,7 @@ const rankSystem      = new RankSystem();
 const bmSystem        = new BlackMarketSystem();
 const investorSystem  = new InvestorSystem();
 const hfSystem        = new HedgeFundSystem();
+const soundSystem     = new SoundSystem();
 const tutorialSystem  = new TutorialSystem();
 const tutorialHasSave = tutorialSystem.load();
 
@@ -52,6 +54,7 @@ const idleSystem = new IdleSystem(
       if (rankUp && newRank) {
         renderer.showRankUp(newRank);
         screenFlash('good');
+        soundSystem.play('rank_up');
         eventSystem.addEntry(`🎖 Rank up: ${newRank.name}!`, 'good');
       }
 
@@ -59,6 +62,7 @@ const idleSystem = new IdleSystem(
       if (!bmSystem.unlocked && rankSystem.isFeatureUnlocked('black_market', nw)) {
         bmSystem.unlock();
         renderer.showBlackMarketUnlock();
+        soundSystem.play('unlock');
         eventSystem.addEntry('🕵️ Black Market unlocked. Check your messages.', 'good');
       }
 
@@ -66,6 +70,7 @@ const idleSystem = new IdleSystem(
       if (!hfSystem.unlocked && rankSystem.isFeatureUnlocked('hedge_fund', nw)) {
         hfSystem.unlock();
         renderer.showHedgeFundUnlock();
+        soundSystem.play('unlock');
         eventSystem.addEntry('💼 Hedge Fund unlocked. Check your messages.', 'good');
       }
 
@@ -82,7 +87,10 @@ const idleSystem = new IdleSystem(
         lastBmDay = day;
         const consequence = bmSystem.dayTick();
         if (consequence) {
-          if (consequence.type === 'fine') player.cash = Math.max(0, player.cash - (consequence.fineAmount ?? 0));
+          if (consequence.type === 'fine') {
+            soundSystem.play('loss');
+            player.cash = Math.max(0, player.cash - (consequence.fineAmount ?? 0));
+          }
           renderer.showToast(consequence.message, 'error');
           renderer.showEventPopup({ id: Date.now(), timestamp: Date.now(), message: consequence.message, severity: 'bad' });
           screenFlash('bad');
@@ -106,10 +114,12 @@ const idleSystem = new IdleSystem(
         }
         for (const c of consequences) {
           if (c.type === 'withdrawal') {
+            soundSystem.play('loss');
             renderer.showToast(c.message, 'error');
             renderer.showEventPopup({ id: Date.now(), timestamp: Date.now(), message: c.message, severity: 'bad' });
             screenFlash('bad');
           } else if (c.type === 'incoming_call' && c.investorId) {
+            soundSystem.play('phone_ring');
             hfPanel.notifyIncomingCall(c.investorId);
           }
         }
@@ -122,9 +132,9 @@ const idleSystem = new IdleSystem(
       const type = entry.severity === 'bad' ? 'error' : entry.severity === 'good' ? 'success' : 'chaos';
       renderer.showToast(entry.message, type);
       renderer.showEventPopup(entry);
-      if (entry.severity === 'bad') { screenFlash('bad'); screenShake('light'); }
-      else if (entry.severity === 'good') screenFlash('good');
-      else if (entry.severity === 'chaos') { screenFlash('chaos'); screenShake('heavy'); }
+      if (entry.severity === 'bad')   { soundSystem.play('loss');   screenFlash('bad'); screenShake('light'); }
+      else if (entry.severity === 'good')  { soundSystem.play('profit'); screenFlash('good'); }
+      else if (entry.severity === 'chaos') { soundSystem.play('risk_warning'); screenFlash('chaos'); screenShake('heavy'); }
     },
 
     onUnlock(name) {
@@ -133,6 +143,7 @@ const idleSystem = new IdleSystem(
     },
 
     onNewsGenerated(item) {
+      soundSystem.play('news_alert');
       const chainLabel = item.chainInfo
         ? ` [🔗 ${item.chainInfo.chainTitle} — Step ${item.chainInfo.stepIndex + 1}/${item.chainInfo.totalSteps}]`
         : '';
@@ -180,6 +191,7 @@ const renderer = new Renderer({
     const result = player.buy(assetId, qty, market);
     renderer.showToast(result.message, result.success ? 'success' : 'error');
     if (result.success && asset) {
+      soundSystem.play('buy');
       eventSystem.addEntry(result.message);
       renderer.showToast(getTradeInsight(asset, 'buy'), 'info');
       renderer.animateTrade(assetId, `-${(asset.price * qty).toFixed(0)}`, 'down');
@@ -189,9 +201,12 @@ const renderer = new Renderer({
 
   onSell(assetId, qty) {
     const asset = market.getAsset(assetId);
+    const cashBefore = player.cash;
     const result = player.sell(assetId, qty, market);
     renderer.showToast(result.message, result.success ? 'success' : 'error');
     if (result.success && asset) {
+      const profit = player.cash - cashBefore;
+      soundSystem.play(profit > 0 ? 'profit' : 'sell');
       eventSystem.addEntry(result.message);
       renderer.showToast(getTradeInsight(asset, 'sell'), 'info');
       renderer.animateTrade(assetId, `+${(asset.price * qty).toFixed(0)}`, 'up');
@@ -207,6 +222,7 @@ const renderer = new Renderer({
     const result = player.buy(assetId, qty, market);
     renderer.showToast(result.message, result.success ? 'success' : 'error');
     if (result.success) {
+      soundSystem.play('buy');
       eventSystem.addEntry(result.message);
       renderer.showToast(getTradeInsight(asset, 'buy'), 'info');
       renderer.animateTrade(assetId, `-${(asset.price * qty).toFixed(0)}`, 'down');
@@ -218,9 +234,12 @@ const renderer = new Renderer({
     const asset = market.getAsset(assetId);
     if (!asset || asset.owned === 0) { renderer.showToast('Nothing to sell!', 'error'); return; }
     const qty = asset.owned;
+    const cashBefore = player.cash;
     const result = player.sell(assetId, qty, market);
     renderer.showToast(result.message, result.success ? 'success' : 'error');
     if (result.success) {
+      const profit = player.cash - cashBefore;
+      soundSystem.play(profit > 0 ? 'profit' : 'sell');
       eventSystem.addEntry(result.message);
       renderer.showToast(getTradeInsight(asset, 'sell'), 'info');
       renderer.animateTrade(assetId, `+${(asset.price * qty).toFixed(0)}`, 'up');
