@@ -1703,6 +1703,48 @@ export class Renderer {
     if (btn) { btn.classList.remove('tab-locked', 'hidden'); }
   }
 
+  showDaySummary(opts: {
+    day: number;
+    netWorthDelta: number;
+    callsMade: number;
+    postsMade: number;
+    rugProfit: number;
+  }): void {
+    const existing = document.getElementById('day-summary-overlay');
+    if (existing) existing.remove();
+
+    const sign = opts.netWorthDelta >= 0 ? '+' : '';
+    const overlay = document.createElement('div');
+    overlay.id = 'day-summary-overlay';
+    overlay.className = 'day-summary-overlay';
+    overlay.innerHTML = `
+      <div class="day-summary-card">
+        <div class="day-summary-title">DAY ${opts.day} COMPLETE</div>
+        <div class="day-summary-rows">
+          <div class="day-summary-row">
+            <span class="ds-lbl">NET WORTH CHANGE</span>
+            <span class="ds-val ${opts.netWorthDelta >= 0 ? 'ds-pos' : 'ds-neg'}">${sign}$${Math.abs(opts.netWorthDelta).toLocaleString()}</span>
+          </div>
+          ${opts.callsMade > 0 || opts.postsMade > 0 || opts.rugProfit > 0 ? `
+          <div class="day-summary-row"><span class="ds-lbl">BM CALLS</span><span class="ds-val">${opts.callsMade}</span></div>
+          <div class="day-summary-row"><span class="ds-lbl">POSTS</span><span class="ds-val">${opts.postsMade}</span></div>
+          ${opts.rugProfit > 0 ? `<div class="day-summary-row"><span class="ds-lbl">RUG PROFIT</span><span class="ds-val ds-pos">+$${opts.rugProfit.toLocaleString()}</span></div>` : ''}
+          ` : ''}
+        </div>
+        <button class="day-summary-close">CONTINUE →</button>
+      </div>`;
+
+    document.body.appendChild(overlay);
+
+    const dismiss = () => {
+      overlay.classList.add('day-summary-out');
+      setTimeout(() => overlay.remove(), 300);
+    };
+    overlay.querySelector('.day-summary-close')?.addEventListener('click', dismiss);
+    overlay.addEventListener('click', (e) => { if (e.target === overlay) dismiss(); });
+    setTimeout(dismiss, 5000);
+  }
+
   // ── Sound ──────────────────────────────────────────────────────────────────
 
   setSoundSystem(ss: SoundSystem): void {

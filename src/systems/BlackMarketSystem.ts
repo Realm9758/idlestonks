@@ -44,9 +44,27 @@ export type HeatLevel = 'safe' | 'suspicious' | 'watched' | 'danger';
 
 export interface BmAlert {
   id: string;
-  type: 'investigation_warning' | 'case_opened' | 'case_resolved_win' | 'case_resolved_loss';
+  type: 'investigation_warning' | 'case_opened' | 'case_resolved_win' | 'case_resolved_loss' | 'sec_sweep' | 'rival_rug';
   message: string;
+  rivalId?: string;
 }
+
+export interface RivalOperator {
+  id: string;
+  name: string;
+  avatar: string;
+  poolAmount: number;
+  rugThreshold: number;
+  growthPerSecond: number;
+  active: boolean;
+  cooldownDays: number;
+  totalRugs: number;
+}
+
+const RIVAL_TEMPLATES: Omit<RivalOperator, 'totalRugs'>[] = [
+  { id: 'darkmike',     name: 'DarkMike',     avatar: '😈', poolAmount: 0, rugThreshold: 18000, growthPerSecond: 14, active: true,  cooldownDays: 0 },
+  { id: 'cryptoqueenx', name: 'CryptoQueenX', avatar: '👸', poolAmount: 0, rugThreshold: 26000, growthPerSecond: 9,  active: false, cooldownDays: 3 },
+];
 
 export interface LawyerUpgrade {
   level: number;
@@ -82,6 +100,8 @@ export interface BmSaveState {
   postsToday?: number;
   postCooldownSecs?: number;
   lawyerLevel?: number;
+  dayCount?: number;
+  rivals?: { id: string; poolAmount: number; active: boolean; cooldownDays: number; totalRugs: number }[];
 }
 
 const CUSTOMER_TEMPLATES: Omit<BmCustomer, 'invested' | 'suspicious' | 'callCount'>[] = [
@@ -130,6 +150,16 @@ export class BlackMarketSystem {
   totalProfit  = 0;
   rugPullCount = 0;
 
+  // Feature G: SEC sweep
+  secSweepSecsRemaining = 0;
+
+  // Feature C: daily stats
+  dailyRugProfit = 0;
+  dayCount = 0;
+
+  // Feature I: rivals
+  rivals: RivalOperator[];
+
   private _customers: BmCustomer[];
   private _activeCallId: string | null = null;
 
@@ -139,6 +169,7 @@ export class BlackMarketSystem {
 
   constructor() {
     this._customers = CUSTOMER_TEMPLATES.map(t => ({ ...t, invested: 0, suspicious: false, callCount: 0 }));
+    this.rivals = RIVAL_TEMPLATES.map(r => ({ ...r, totalRugs: 0 }));
   }
 
   getCustomers(): readonly BmCustomer[] { return this._customers; }
@@ -372,13 +403,14 @@ export class BlackMarketSystem {
   }
 
   canRugPull(): boolean {
-    return !this.isLocked && this.stock.totalInvested >= 100;
+    return !this.isLocked && this.secSweepSecsRemaining <= 0 && this.stock.totalInvested >= 100;
   }
 
   rugPull(): { profit: number; totalStolen: number } {
     const totalStolen = this.stock.totalInvested;
     const profit = Math.round(totalStolen * 0.70);
-    this.totalProfit  += profit;
+    this.totalProfit     += profit;
+    this.dailyRugProfit  += profit;
     this.rugPullCount++;
     this.stock = { price: 0.001, hype: 0, totalInvested: 0 };
     for (const c of this._customers) { c.invested = 0; c.suspicious = true; }
@@ -386,6 +418,18 @@ export class BlackMarketSystem {
     this.caseProgress = Math.min(100, this.caseProgress + 30);
     return { profit, totalStolen };
   }
+
+  // Feature J: Lay Low — costs 1 lock day, drops heat 30 pts
+  layLow(): boolean {
+    if (this.isLocked || this.heat < 20) return false;
+    this.isLocked = true;
+    this.lockDaysRemaining = 1;
+    this.heat = Math.max(0, this.heat - 30);
+    this._investigationWarned = false;
+    return true;
+  }
+
+  getRivals(): readonly RivalOperator[] { return this.rivals; }
 
   consumeAlerts(): BmAlert[] {
     const alerts = [...this.pendingAlerts];
@@ -440,6 +484,40 @@ export class BlackMarketSystem {
         type: 'investigation_warning',
         message: '⚠️ Authorities are watching your activity.',
       });
+    }
+
+    // Feature G: SEC sweep — chance to freeze rug pull for 6–15s when heat ≥ 85
+    if (this.secSweepSecsRemaining > 0) {
+      this.secSweepSecsRemaining--;
+    } else if (this.heat >= 85 && Math.random() < 0.008) {
+      this.secSweepSecsRemaining = 6 + Math.floor(Math.random() * 10);
+      this.pendingAlerts.push({
+        id: `alert_${Date.now()}`,
+        type: 'sec_sweep',
+        message: `🔒 SEC sweep in progress — rug pull locked for ${this.secSweepSecsRemaining}s!`,
+      });
+    }
+
+    // Feature I: rival pool growth + auto-rug
+    for (const rival of this.rivals) {
+      if (!rival.active) continue;
+      rival.poolAmount += rival.growthPerSecond;
+      if (rival.poolAmount >= rival.rugThreshold) {
+        // Rival rugs — steal 5–15% of your crowd
+        const stealFraction = 0.05 + Math.random() * 0.10;
+        const stolen = Math.round(this.stock.totalInvested * stealFraction);
+        this.stock.totalInvested = Math.max(0, this.stock.totalInvested - stolen);
+        rival.totalRugs++;
+        rival.active = false;
+        rival.cooldownDays = 2 + Math.floor(Math.random() * 2); // 2–3 day cooldown
+        rival.poolAmount = 0;
+        this.pendingAlerts.push({
+          id: `alert_${Date.now()}`,
+          type: 'rival_rug',
+          message: `${rival.avatar} ${rival.name} just rugged — swiped $${stolen.toLocaleString()} from your crowd!`,
+          rivalId: rival.id,
+        });
+      }
     }
 
     // Posts: engagement growth + comment generation
@@ -502,8 +580,11 @@ export class BlackMarketSystem {
   }
 
   dayTick(): BmConsequence | null {
+    this.dayCount++;
     this.callsToday = 0;
     this.postsToday = 0;
+    this.dailyRugProfit = 0;
+
     if (this.lockDaysRemaining > 0) {
       this.lockDaysRemaining--;
       if (this.lockDaysRemaining === 0) this.isLocked = false;
@@ -512,6 +593,24 @@ export class BlackMarketSystem {
     this.stock.hype  = Math.max(0, this.stock.hype - 0.04);
     if (this.stock.totalInvested === 0) {
       this.stock.price = Math.max(0.001, this.stock.price * 0.96);
+    }
+
+    // Feature G: trust erosion when heat stays high
+    if (this.heat > 70) {
+      for (const c of this._customers) {
+        c.trust = Math.max(0.05, c.trust * 0.95);
+      }
+    }
+
+    // Feature I: rival cooldown countdown + reactivation
+    for (const rival of this.rivals) {
+      if (!rival.active && rival.cooldownDays > 0) {
+        rival.cooldownDays--;
+        if (rival.cooldownDays === 0) {
+          rival.active = true;
+          rival.poolAmount = 0;
+        }
+      }
     }
 
     // Force-resolve case if progress is full
@@ -603,6 +702,11 @@ export class BlackMarketSystem {
       postsToday:       this.postsToday,
       postCooldownSecs: this.postCooldownSecs,
       lawyerLevel:      this.lawyerLevel,
+      dayCount:         this.dayCount,
+      rivals:           this.rivals.map(r => ({
+        id: r.id, poolAmount: r.poolAmount, active: r.active,
+        cooldownDays: r.cooldownDays, totalRugs: r.totalRugs,
+      })),
     };
   }
 
@@ -618,11 +722,18 @@ export class BlackMarketSystem {
     this.postsToday       = s.postsToday       ?? 0;
     this.postCooldownSecs = s.postCooldownSecs ?? 0;
     this.lawyerLevel      = s.lawyerLevel      ?? 0;
+    this.dayCount         = s.dayCount         ?? 0;
     if (s.stock) this.stock = { ...s.stock };
     if (s.customers) {
       for (const sc of s.customers) {
         const c = this._customers.find(x => x.id === sc.id);
         if (c) Object.assign(c, { money: sc.money, invested: sc.invested, suspicious: sc.suspicious, callCount: sc.callCount });
+      }
+    }
+    if (s.rivals) {
+      for (const sr of s.rivals) {
+        const r = this.rivals.find(x => x.id === sr.id);
+        if (r) Object.assign(r, { poolAmount: sr.poolAmount, active: sr.active, cooldownDays: sr.cooldownDays, totalRugs: sr.totalRugs });
       }
     }
   }

@@ -49,6 +49,9 @@ const tutorialHasSave = tutorialSystem.load();
 let lastBmDay  = -1;
 let lastHfDay  = -1;
 let prevHfNetWorth = -1;
+let dayStartNetWorth = 0;
+let dayStartBmCalls  = 0;
+let dayStartBmPosts  = 0;
 
 // hfSystem declared before IdleSystem so it can be passed in
 const idleSystem = new IdleSystem(
@@ -99,6 +102,21 @@ const idleSystem = new IdleSystem(
       // BM day-boundary tick
       if (day !== lastBmDay) {
         lastBmDay = day;
+
+        // Feature C: capture stats before dayTick resets them
+        if (bmSystem.unlocked && day > 1) {
+          renderer.showDaySummary({
+            day:          day - 1,
+            netWorthDelta: nw - dayStartNetWorth,
+            callsMade:    dayStartBmCalls,
+            postsMade:    dayStartBmPosts,
+            rugProfit:    bmSystem.dailyRugProfit,
+          });
+        }
+        dayStartNetWorth = nw;
+        dayStartBmCalls  = bmSystem.callsToday;
+        dayStartBmPosts  = bmSystem.postsToday;
+
         const consequence = bmSystem.dayTick();
         if (consequence) {
           if (consequence.type === 'fine' || consequence.type === 'case_lost') {

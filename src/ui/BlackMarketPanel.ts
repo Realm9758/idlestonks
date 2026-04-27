@@ -292,10 +292,17 @@ export class BlackMarketPanel {
         </div>
         <div id="bm-customers" class="bm-customers"></div>
 
+        <div id="bm-sec-sweep" class="bm-sec-sweep hidden">
+          🔒 SEC SWEEP — RUG LOCKED <span id="bm-sweep-timer"></span>
+        </div>
+
         <button id="btn-rug-pull" class="btn-rug-pull" disabled>
           <span class="rug-icon">💀</span>
           <span class="rug-text">EXECUTE RUG PULL</span>
         </button>
+
+        <div class="bm-rivals-hdr">RIVAL OPERATORS</div>
+        <div id="bm-rivals-list" class="bm-rivals-list"></div>
       </div>
 
       <!-- RIGHT: THREAT INTEL -->
@@ -353,6 +360,11 @@ export class BlackMarketPanel {
           🚫 SUSPENDED<br>
           <span id="bm-lock-days" class="bm-lock-days">—</span>
         </div>
+
+        <button id="btn-lay-low" class="btn-lay-low" disabled>
+          🤫 Lay Low
+          <span class="lay-low-sub">−30 heat · 1 day lock</span>
+        </button>
       </div>
 
     </div>
@@ -454,6 +466,7 @@ export class BlackMarketPanel {
     });
 
     document.getElementById('btn-rug-pull')?.addEventListener('click', () => this._handleRugPull());
+    document.getElementById('btn-lay-low')?.addEventListener('click', () => this._handleLayLow());
 
     document.getElementById('bm-call-hangup')?.addEventListener('click', () => this._hangUp());
   }
@@ -677,6 +690,15 @@ export class BlackMarketPanel {
     this.updateDisplay();
   }
 
+  private _handleLayLow(): void {
+    const success = this.sys.layLow();
+    if (success) {
+      this.cb!.showToast('🤫 Laying low — heat drops 30pts, suspended 1 day.', 'info');
+      this._appendChatMsg('bm-chat-messages', 'left', 'smart move. stay dark for a bit 🤫');
+      this.updateDisplay();
+    }
+  }
+
   // ── Unlock / tutorial ──────────────────────────────────────────────────────
 
   triggerUnlockNotif(): void {
@@ -799,8 +821,39 @@ export class BlackMarketPanel {
     const rugBtn = g('btn-rug-pull') as HTMLButtonElement | null;
     if (rugBtn) rugBtn.disabled = !s.canRugPull();
 
+    // SEC sweep indicator
+    const sweepEl = g('bm-sec-sweep');
+    const sweepTimer = g('bm-sweep-timer');
+    sweepEl?.classList.toggle('hidden', s.secSweepSecsRemaining <= 0);
+    if (sweepTimer) sweepTimer.textContent = s.secSweepSecsRemaining > 0 ? `(${s.secSweepSecsRemaining}s)` : '';
+
+    // Lay Low button
+    const layLowBtn = g('btn-lay-low') as HTMLButtonElement | null;
+    if (layLowBtn) layLowBtn.disabled = s.isLocked || s.heat < 20;
+
+    this._updateRivalsList();
     this._updateCustomerCards();
     this.socialPanel?.updateDisplay();
+  }
+
+  private _updateRivalsList(): void {
+    const container = document.getElementById('bm-rivals-list');
+    if (!container) return;
+    const rivals = this.sys.getRivals();
+    container.innerHTML = '';
+    for (const r of rivals) {
+      const pct = r.active ? Math.min(100, (r.poolAmount / r.rugThreshold) * 100) : 0;
+      const div = document.createElement('div');
+      div.className = 'bm-rival-row';
+      div.innerHTML = `
+        <span class="bm-rival-avatar">${r.avatar}</span>
+        <div class="bm-rival-info">
+          <div class="bm-rival-name">${r.name} ${r.active ? '' : `<span class="bm-rival-dormant">dormant ${r.cooldownDays}d</span>`}</div>
+          <div class="bm-rival-track"><div class="bm-rival-fill ${r.active ? '' : 'bm-rival-inactive'}" style="width:${pct.toFixed(0)}%"></div></div>
+        </div>
+        <span class="bm-rival-pct">${r.active ? `${pct.toFixed(0)}%` : '—'}</span>`;
+      container.appendChild(div);
+    }
   }
 
   private _updateCustomerCards(): void {

@@ -215,6 +215,13 @@ export class SocialMediaPanel {
       } else if (alert.type === 'case_resolved_loss') {
         this.cb.showToast(alert.message, 'error');
         screenFlash('bad');
+      } else if (alert.type === 'sec_sweep') {
+        this.cb.showToast(alert.message, 'chaos');
+        screenFlash('bad');
+        screenShake('light');
+      } else if (alert.type === 'rival_rug') {
+        this.cb.showToast(alert.message, 'chaos');
+        screenShake('light');
       }
     }
   }
