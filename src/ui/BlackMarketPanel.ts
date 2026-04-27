@@ -6,7 +6,7 @@ import { SocialMediaPanel } from './SocialMediaPanel.ts';
 export interface BmCallbacks {
   showToast:    (msg: string, type: 'success' | 'error' | 'info' | 'chaos') => void;
   addCash:      (amount: number) => void;
-  deductCash:   (amount: number) => void;
+  deductCash:   (amount: number) => boolean;
   openBmTab:    () => void;
   onCallStart?: () => void;
   onCallEnd?:   () => void;
@@ -228,8 +228,9 @@ export class BlackMarketPanel {
     const mount = document.getElementById('sm-panel-mount');
     if (!mount) return;
     this.socialPanel = new SocialMediaPanel(this.sys, {
-      showToast: (msg, type) => this.cb!.showToast(msg, type),
-      addCash:   (amt)       => this.cb!.addCash(amt),
+      showToast:   (msg, type) => this.cb!.showToast(msg, type),
+      addCash:     (amt)       => this.cb!.addCash(amt),
+      deductCash:  (amt)       => this.cb!.deductCash(amt),
     });
     this.socialPanel.mount(mount);
   }

@@ -168,16 +168,6 @@ export class BlackMarketSystem {
     return LAWYER_UPGRADES.find(u => u.level === this.lawyerLevel) ?? null;
   }
 
-  private _getLawyerStat(key: keyof LawyerUpgrade): number {
-    // Cumulative stat from all purchased lawyer levels
-    let total = 0;
-    for (let l = 1; l <= this.lawyerLevel; l++) {
-      const u = LAWYER_UPGRADES.find(x => x.level === l);
-      if (u) total += u[key] as number;
-    }
-    return total;
-  }
-
   buyLawyerUpgrade(deductCash: (amount: number) => boolean): boolean {
     const next = this.getLawyerUpgrade();
     if (!next) return false;

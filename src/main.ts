@@ -382,7 +382,7 @@ const bmPanel = new BlackMarketPanel(bmSystem);
 bmPanel.mount(document.getElementById('bm-panel-mount')!, {
   showToast:    (msg, type) => renderer.showToast(msg, type as 'success' | 'error' | 'info' | 'chaos'),
   addCash:      (amt) => { player.cash += amt; },
-  deductCash:   (amt) => { player.cash = Math.max(0, player.cash - amt); },
+  deductCash:   (amt) => { if (player.cash < amt) return false; player.cash -= amt; return true; },
   openBmTab:    () => renderer.switchTab('bm'),
   onCallStart:  () => soundSystem.play('call_connect'),
   onCallEnd:    () => soundSystem.play('call_hangup'),

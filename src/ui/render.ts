@@ -126,28 +126,36 @@ export class Renderer {
 <div id="app">
   <header id="header">
     <div class="header-left">
-      <div class="logo">📈 <span>IdleStonks</span></div>
+      <div class="logo">
+        <span class="logo-icon">📈</span>
+        <div class="logo-text">
+          <span class="logo-title">IdleStonks</span>
+          <span class="logo-sub">Meme Market Simulator</span>
+        </div>
+      </div>
     </div>
     <div class="header-stats">
       <div class="stat-block">
-        <span class="stat-label">DAY</span>
+        <span class="stat-label">📅 Day</span>
         <span id="stat-day" class="stat-value">1</span>
       </div>
       <div class="stat-block">
-        <span class="stat-label">CASH</span>
+        <span class="stat-label">💵 Cash</span>
         <span id="stat-cash" class="stat-value">$1,000</span>
       </div>
       <div class="stat-block">
-        <span class="stat-label">NET WORTH</span>
-        <span id="stat-networth" class="stat-value">$1,000</span>
-      </div>
-      <div class="stat-block">
-        <span class="stat-label">PORTFOLIO</span>
+        <span class="stat-label">💼 Portfolio</span>
         <span id="stat-portfolio" class="stat-value">$0</span>
       </div>
+      <div class="stat-block stat-block-highlight">
+        <span class="stat-label">📊 Net Worth</span>
+        <span id="stat-networth" class="stat-value stat-networth">$1,000</span>
+      </div>
       <div class="stat-block rank-block">
-        <span class="stat-label">RANK</span>
-        <span id="stat-rank" class="stat-value rank-val">📊 Rookie Trader</span>
+        <div class="rank-top-row">
+          <span class="stat-label">🏆 Rank</span>
+          <span id="stat-rank" class="rank-val">📊 Rookie Trader</span>
+        </div>
         <div class="rank-progress-row">
           <div class="rank-progress-wrap">
             <div id="rank-progress-fill" class="rank-progress-fill" style="width:0%"></div>
@@ -157,7 +165,7 @@ export class Renderer {
         <div id="rank-unlock-hint" class="rank-unlock-hint"></div>
       </div>
       <div class="stat-block prestige-block hidden" id="prestige-block">
-        <span class="stat-label">MULTIPLIER</span>
+        <span class="stat-label">⭐ Multiplier</span>
         <span id="stat-multiplier" class="stat-value gold">×1</span>
       </div>
     </div>
@@ -184,14 +192,22 @@ export class Renderer {
   </header>
 
   <div id="tab-bar">
-    <button class="tab-btn tab-active" data-tab="main">📊 Market</button>
-    <button class="tab-btn" data-tab="upgrades">📦 Upgrades</button>
-    <button class="tab-btn tab-locked" data-tab="bm" id="tab-bm">🔒 Classified</button>
-    <button class="tab-btn tab-locked hidden" data-tab="hf" id="tab-hf">💼 Hedge Fund</button>
+    <div class="tab-bar-left">
+      <button class="tab-btn tab-active" data-tab="main">📊 Market</button>
+      <button class="tab-btn" data-tab="upgrades">⬆️ Upgrades</button>
+      <button class="tab-btn tab-locked" data-tab="bm" id="tab-bm">🔒 Classified</button>
+      <button class="tab-btn tab-locked hidden" data-tab="hf" id="tab-hf">💼 Hedge Fund</button>
+    </div>
+    <div class="tab-bar-actions" id="tab-action-btns">
+      <button id="btn-yolo" class="btn btn-tab-yolo">🎲 YOLO</button>
+      <button id="btn-stabilise" class="btn btn-tab-stabilise">🎚️ Stabilise <span class="cost-badge">$500</span></button>
+      <button id="btn-manipulate" class="btn btn-tab-manipulate">🕹️ Manipulate <span class="cost-badge">$1,000</span></button>
+    </div>
   </div>
 
   <div id="ticker-bar">
-    <span class="ticker-label">📡 BREAKING</span>
+    <span class="ticker-dot"></span>
+    <span class="ticker-label">BREAKING</span>
     <div class="ticker-wrap"><span id="ticker-text"></span></div>
   </div>
 
@@ -208,12 +224,8 @@ export class Renderer {
   <div id="main-grid">
     <div id="market-panel" class="panel">
       <div class="panel-header">
-        <h2>📊 Market</h2>
-        <div class="panel-actions">
-          <button id="btn-yolo" class="btn btn-primary">🎲 YOLO</button>
-          <button id="btn-stabilise" class="btn btn-secondary">🎚️ Stabilise <span class="cost-badge">$500</span></button>
-          <button id="btn-manipulate" class="btn btn-danger">🕹️ Manipulate <span class="cost-badge">$1000</span></button>
-        </div>
+        <h2>Available Stonks</h2>
+        <span id="market-asset-count" class="panel-sub"></span>
       </div>
       <div id="asset-list"></div>
     </div>
@@ -554,6 +566,11 @@ export class Renderer {
   private updateMarket(market: Market, player: Player, upgradeSystem: UpgradeSystem, day: number): void {
     const container = document.getElementById('asset-list')!;
     const unlocked = market.getUnlockedAssets();
+    const countEl = document.getElementById('market-asset-count');
+    if (countEl) {
+      const owned = unlocked.filter(a => a.owned > 0).length;
+      countEl.textContent = `${unlocked.length} assets · ${owned} owned`;
+    }
 
     if (unlocked.length !== this.lastUnlockedCount) {
       this.lastUnlockedCount = unlocked.length;
@@ -575,6 +592,10 @@ export class Renderer {
         this.lastPrices.set(asset.id, asset.price);
       }
       priceEl.textContent = formatCurrency(asset.price);
+
+      // ── Sparkline ─────────────────────────────────────────────────────
+      const sparkEl = row.querySelector<HTMLElement>('.asset-sparkline');
+      if (sparkEl) sparkEl.innerHTML = this.buildSparklineSvg(asset.priceHistory);
 
       const pct = asset.getPriceChangePct();
       const changeEl = row.querySelector('.asset-change') as HTMLElement;
@@ -654,50 +675,70 @@ export class Renderer {
     const row = createEl('div', 'asset-row');
     row.dataset.id = asset.id;
 
+    // Derive short ticker from id (e.g. catcoin → CAT)
+    const ticker = asset.id.replace(/_/g, '').slice(0, 4).toUpperCase();
+
     row.innerHTML = `
-      <div class="asset-meta">
-        <div class="asset-name-row">
-          <span class="asset-emoji">${asset.emoji}</span>
-          <span class="asset-name">${asset.name}</span>
-          <span class="asset-trend hidden"></span>
-          <button class="btn-analyse btn-icon" title="Analyse ${asset.name}">🔍</button>
+      <div class="asset-card-top">
+        <div class="asset-left">
+          <div class="asset-icon-wrap">${asset.emoji}</div>
+          <div class="asset-info">
+            <div class="asset-name-row">
+              <span class="asset-name">${asset.name}</span>
+              <span class="asset-ticker">${ticker}</span>
+              <span class="asset-trend hidden"></span>
+            </div>
+            <div class="asset-badge-row">
+              <span class="stat-badge sl-muted ind-hype-badge">🔥 —</span>
+              <span class="stat-badge sl-muted ind-mom-badge">→ —</span>
+              <span class="stat-badge sl-muted ind-stab-badge">🛡 —</span>
+              <span class="stat-badge sl-muted ind-risk-badge">🎲 —</span>
+            </div>
+            <div class="asset-tags"></div>
+            <div class="asset-news-line hidden"></div>
+          </div>
+        </div>
+        <div class="asset-sparkline"></div>
+        <div class="asset-price-col">
+          <span class="asset-price">$0.00</span>
+          <span class="asset-change green">+0.00%</span>
           <span class="asset-owned"></span>
         </div>
-        <div class="asset-news-line hidden"></div>
-        <div class="asset-indicators">
-          <span class="stat-badge sl-muted ind-hype-badge">🔥 Hype: —</span>
-          <span class="stat-badge sl-muted ind-mom-badge">→ —</span>
-          <span class="stat-badge sl-muted ind-stab-badge">🛡 —</span>
-          <span class="stat-badge sl-muted ind-risk-badge">🎲 —</span>
+      </div>
+      <div class="asset-action-row">
+        <div class="asset-qty-group">
+          <button class="btn-qty btn-qty-dec">−</button>
+          <input class="qty-input" type="number" min="1" value="1" />
+          <button class="btn-qty btn-qty-inc">+</button>
         </div>
-        <div class="asset-tags"></div>
-      </div>
-      <div class="asset-price-col">
-        <span class="asset-price">$0.00</span>
-        <span class="asset-change green">+0.00%</span>
-      </div>
-      <div class="asset-btns">
-        <input class="qty-input" type="number" min="1" value="1" />
-        <button class="btn btn-buy btn-sm">Buy</button>
-        <button class="btn btn-sell btn-sm">Sell</button>
-        <button class="btn btn-max btn-sm">Max</button>
-        <button class="btn btn-sell-all btn-sm">All</button>
+        <button class="btn btn-buy">Buy</button>
+        <button class="btn btn-sell">Sell</button>
+        <button class="btn btn-max btn-sm">Max (0)</button>
+        <button class="btn btn-sell-all btn-sm">All (0)</button>
+        <button class="btn-analyse btn-icon" title="Analyse ${asset.name}">🔍</button>
       </div>
     `;
 
-    // Set initial badge values so they're readable before first tick
     const _hL = asset.getHypeLabel(), _mL = asset.getMomentumLabel(),
           _sL = asset.getStabilityLabel(), _rL = asset.getRiskLabel();
     const _hb = row.querySelector('.ind-hype-badge') as HTMLElement;
     _hb.textContent = `${_hL.icon} Hype: ${_hL.text}`; _hb.className = `stat-badge ${_hL.cls} ind-hype-badge`;
-    const _mb = row.querySelector('.ind-mom-badge')  as HTMLElement;
-    _mb.textContent = `${_mL.icon} ${_mL.text}`;        _mb.className = `stat-badge ${_mL.cls} ind-mom-badge`;
+    const _mb = row.querySelector('.ind-mom-badge') as HTMLElement;
+    _mb.textContent = `${_mL.icon} ${_mL.text}`;       _mb.className = `stat-badge ${_mL.cls} ind-mom-badge`;
     const _sb = row.querySelector('.ind-stab-badge') as HTMLElement;
-    _sb.textContent = `${_sL.icon} ${_sL.text}`;        _sb.className = `stat-badge ${_sL.cls} ind-stab-badge`;
+    _sb.textContent = `${_sL.icon} ${_sL.text}`;       _sb.className = `stat-badge ${_sL.cls} ind-stab-badge`;
     const _rb = row.querySelector('.ind-risk-badge') as HTMLElement;
     _rb.textContent = `${_rL.icon} Risk: ${_rL.text}`; _rb.className = `stat-badge ${_rL.cls} ind-risk-badge`;
 
     const qtyInput = row.querySelector('.qty-input') as HTMLInputElement;
+    row.querySelector('.btn-qty-dec')!.addEventListener('click', () => {
+      const v = parseInt(qtyInput.value, 10);
+      if (v > 1) qtyInput.value = String(v - 1);
+    });
+    row.querySelector('.btn-qty-inc')!.addEventListener('click', () => {
+      const v = parseInt(qtyInput.value, 10);
+      qtyInput.value = String(v + 1);
+    });
     row.querySelector('.btn-buy')!.addEventListener('click', () => {
       const qty = parseInt(qtyInput.value, 10);
       if (qty > 0) {
@@ -724,12 +765,40 @@ export class Renderer {
     });
     row.querySelector('.btn-analyse')!.addEventListener('click', (e) => {
       e.stopPropagation();
-      // Dispatch upward; main wires this via showInsightPanel
       const ev = new CustomEvent('open-insight', { detail: asset.id, bubbles: true });
       row.dispatchEvent(ev);
     });
 
     return row;
+  }
+
+  private buildSparklineSvg(history: number[]): string {
+    const pts = history.slice(-16);
+    if (pts.length < 2) return '';
+    const min = Math.min(...pts);
+    const max = Math.max(...pts);
+    const range = max - min || min * 0.01 || 1;
+    const W = 72; const H = 28;
+    const points = pts.map((p, i) => {
+      const x = (i / (pts.length - 1)) * W;
+      const y = H - ((p - min) / range) * (H - 4) - 2;
+      return `${x.toFixed(1)},${y.toFixed(1)}`;
+    }).join(' ');
+    const isUp = pts[pts.length - 1] >= pts[0];
+    const color = isUp ? '#3fb950' : '#f85149';
+    const fillColor = isUp ? 'rgba(63,185,80,0.12)' : 'rgba(248,81,73,0.12)';
+    const lastX = ((pts.length - 1) / (pts.length - 1)) * W;
+    const lastY = H - ((pts[pts.length - 1] - min) / range) * (H - 4) - 2;
+    const fillPath = `M0,${H} ${pts.map((p, i) => {
+      const x = (i / (pts.length - 1)) * W;
+      const y = H - ((p - min) / range) * (H - 4) - 2;
+      return `${x.toFixed(1)},${y.toFixed(1)}`;
+    }).join(' L')} L${lastX},${H} Z`;
+    return `<svg viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" style="display:block;overflow:visible">
+      <path d="${fillPath}" fill="${fillColor}" stroke="none"/>
+      <polyline points="${points}" fill="none" stroke="${color}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+      <circle cx="${lastX}" cy="${lastY}" r="2" fill="${color}"/>
+    </svg>`;
   }
 
   // ── Portfolio ─────────────────────────────────────────────────────────────
