@@ -4,9 +4,13 @@ export type PostOutcome = 'flop' | 'normal' | 'strong' | 'viral';
 export type CommentType = 'positive' | 'neutral' | 'negative';
 
 export interface SocialComment {
-  id: string;
-  text: string;
-  type: CommentType;
+  id:        string;
+  text:      string;
+  type:      CommentType;
+  username:  string;
+  avatar:    string;
+  createdAt: number;
+  effect?:   { hype?: number; heat?: number };
 }
 
 export interface SocialPost {
@@ -132,70 +136,89 @@ export const POST_TEXTS: Record<SocialPlatform, Record<SocialPostType, string[]>
   },
 };
 
-export const COMMENT_POOL: Record<CommentType, string[]> = {
+const USERS: Record<CommentType, Array<{ u: string; a: string }>> = {
   positive: [
-    "this is going to the moon 🚀",
-    "just bought more",
-    "we're early 👀",
-    "WAGMI 🙌",
-    "loaded up, not looking back 💎",
-    "this is the next 100x fr",
-    "chart looks insane rn 📈",
-    "sending this to my whole group chat",
-    "lfg 🔥🔥🔥",
-    "in since the bottom, feeling blessed",
-    "guys I'm not joking, buy now",
-    "this team is legit, did my research",
-    "just told my brother about this 👀",
-    "biggest play of the year no cap",
-    "honestly undervalued asf rn",
-    "my bags are packed 🌙",
-    "price discovery mode ACTIVATED",
-    "early movers always win 💰",
-    "THIS. IS. THE. ONE.",
-    "portfolio finally making sense 📊",
+    { u: 'moonboi_99',      a: '🚀' }, { u: 'diamond_handz',  a: '💎' },
+    { u: 'CryptoKingXL',   a: '👑' }, { u: 'BullishBruno',   a: '🐂' },
+    { u: 'apeInGang',      a: '🦍' }, { u: 'tendies_szn',    a: '🍗' },
+    { u: 'wagmi_always',   a: '🌙' }, { u: 'satoshi_fan420', a: '💰' },
+    { u: 'ngmi_never',     a: '📈' }, { u: 'hodl_or_die',    a: '🔥' },
   ],
   neutral: [
-    "interesting",
-    "watching this",
-    "hmm 🤔",
-    "keeping an eye on this one",
-    "not sure yet",
-    "might buy a small bag",
-    "what's the tokenomics?",
-    "first time hearing about this",
-    "researching now",
-    "can someone explain the utility?",
-    "anyone done DD on this?",
-    "seems like there's momentum",
-    "what's the team background?",
-    "checking the chart",
-    "gonna wait for a dip",
+    { u: 'MarketWatcher',   a: '👀' }, { u: 'CryptoAnalyst',  a: '📊' },
+    { u: 'DegenDave',       a: '🎰' }, { u: 'on_the_fence',   a: '🤔' },
+    { u: 'just_watching',   a: '🔭' }, { u: 'hmm_maybe',      a: '💭' },
+    { u: 'normie_investor', a: '🙂' }, { u: 'slow_steady',    a: '🐢' },
   ],
   negative: [
-    "this feels like a scam 🚨",
-    "why is this pumping so fast?",
-    "something is off here",
-    "SEC gonna love this 💀",
-    "classic pump and dump 🙄",
-    "who's actually behind this project?",
-    "suspicious activity detected",
-    "bro this is so fake lmao",
-    "ya'll getting rekt and don't even know it",
-    "did anyone actually audit the contract?",
-    "zero fundamentals, pure hype",
-    "I've seen this pattern before... 👀",
-    "no whitepaper, no team, no product... sus",
+    { u: 'FraudAlert_Bot',  a: '🚨' }, { u: 'rug_detector',   a: '🔍' },
+    { u: 'ngmi_spotter',    a: '📉' }, { u: 'SEC_watcher',    a: '🏛️' },
+    { u: 'skeptic_sam',     a: '😒' }, { u: 'exit_now_pls',   a: '🚪' },
+    { u: 'this_is_fine',    a: '🔥' }, { u: 'ponzi_hunter',   a: '🕵️' },
+    { u: 'bearish_af',      a: '🐻' }, { u: 'nfa_but_ngmi',   a: '❌' },
+  ],
+};
+
+export const COMMENT_POOL: Record<CommentType, string[]> = {
+  positive: [
+    "this is literally going to 100x 🚀",
+    "getting in early before it moons 📈",
+    "my portfolio needed this fr fr",
+    "aping in rn, no hesitation",
+    "the chart is SCREAMING buy rn",
+    "easiest money of my life ngl",
+    "told my whole group chat about this",
+    "diamond hands only 💎 not selling",
+    "in since the bottom, feeling blessed",
+    "never seen a setup this clean 🔥",
+    "went all in just now. no regrets",
+    "generational wealth incoming fr",
+    "adding more on every dip 🚀",
+    "THIS. IS. THE. ONE. no cap",
+    "portfolio finally printing 📊",
+    "bro wake up this thing is unstoppable",
+    "WAGMI 🙌 see you all on the moon",
+    "early movers always win 💰",
+  ],
+  neutral: [
+    "keeping an eye on this one",
+    "interesting price action tbh",
+    "been hearing about this all week",
+    "might wait for a dip before buying",
+    "chart looks mid but idk",
+    "not convinced yet but watching",
+    "volume seems a bit weird",
+    "curious where this ends up",
+    "anyone else tracking this?",
+    "doing my own research first",
+    "could go either way honestly",
+    "what's the market cap on this?",
+    "seems like there's momentum building",
+    "first time seeing this, interesting",
+  ],
+  negative: [
+    "this smells like a rug pull 🚨",
+    "SEC is gonna be real interested in this",
+    "y'all are getting played hard rn",
+    "classic pump and dump, wake up",
+    "nobody's talking about who's behind this",
+    "I've seen this playbook before 📉",
+    "whale wallets are quietly dumping rn",
+    "get out before it's too late 🚪",
+    "zero liquidity, don't trust it",
+    "the devs are anonymous for a reason",
+    "exit liquidity, that's all you are",
+    "NGMI if you're still holding this",
+    "reported this to the authorities btw",
+    "my lawyer flagged this yesterday",
+    "bro this is so obviously fake lmao",
+    "no whitepaper, no team, no product 🚩",
+    "market manipulation is illegal just fyi",
     "these comments look astroturfed ngl",
-    "OP is definitely the dev 🤡",
-    "anonymous team is a red flag 🚩",
-    "why are there no critical comments?",
-    "market manipulation is illegal btw",
   ],
 };
 
 export function pickComment(heat: number): SocialComment {
-  // Sentiment weights shift toward negative as heat rises
   let posW: number, neuW: number, negW: number;
   if (heat < 30)      { posW = 0.70; neuW = 0.20; negW = 0.10; }
   else if (heat < 60) { posW = 0.40; neuW = 0.30; negW = 0.30; }
@@ -208,9 +231,23 @@ export function pickComment(heat: number): SocialComment {
   else if (roll < posW + neuW) type = 'neutral';
   else type = 'negative';
 
-  const pool = COMMENT_POOL[type];
-  const text = pool[Math.floor(Math.random() * pool.length)];
-  return { id: `c_${Date.now()}_${Math.floor(Math.random() * 9999)}`, text, type };
+  const pool     = COMMENT_POOL[type];
+  const userPool = USERS[type];
+  const text     = pool[Math.floor(Math.random() * pool.length)];
+  const user     = userPool[Math.floor(Math.random() * userPool.length)];
+  const effect   = type === 'positive' ? { hype: 1 }
+                 : type === 'negative' ? { heat: 1 }
+                 : undefined;
+
+  return {
+    id:        `c_${Date.now()}_${Math.floor(Math.random() * 9999)}`,
+    text,
+    type,
+    username:  user.u,
+    avatar:    user.a,
+    createdAt: Date.now(),
+    effect,
+  };
 }
 
 export function getPostImpactPreview(

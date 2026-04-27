@@ -5,12 +5,132 @@ export interface FeedCallbacks {
   onViralPost: (post: SocialPost) => void;
 }
 
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+function esc(t: string): string {
+  return t.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+function relativeTime(ts: number): string {
+  const s = Math.floor((Date.now() - ts) / 1000);
+  if (s < 5)    return 'just now';
+  if (s < 60)   return `${s}s ago`;
+  if (s < 3600) return `${Math.floor(s / 60)}m ago`;
+  return 'a while ago';
+}
+
+// ── CommentBubble ─────────────────────────────────────────────────────────────
+
+class CommentBubble {
+  static create(comment: SocialComment, isTop = false): HTMLElement {
+    const el = document.createElement('div');
+    el.className = [
+      'sm-comment-row',
+      `sm-comment-${comment.type}`,
+      isTop ? 'sm-comment-top-pin' : '',
+    ].filter(Boolean).join(' ');
+    el.dataset.commentId = comment.id;
+    el.dataset.created   = String(comment.createdAt);
+
+    const topBadge = isTop
+      ? `<span class="sm-top-label">⭐ Top Comment</span>`
+      : '';
+
+    const effectHtml = comment.effect
+      ? `<span class="sm-effect-tag sm-effect-${comment.effect.hype != null ? 'hype' : 'heat'}" data-auto-hide>
+           ${comment.effect.hype != null ? `+${comment.effect.hype} hype` : `+${comment.effect.heat} heat`}
+         </span>`
+      : '';
+
+    el.innerHTML = `
+      <div class="sm-comment-avatar-wrap">
+        <span class="sm-comment-avatar">${esc(comment.avatar)}</span>
+      </div>
+      <div class="sm-comment-body">
+        ${topBadge}
+        <div class="sm-comment-header">
+          <span class="sm-comment-username">@${esc(comment.username)}</span>
+          <time class="sm-comment-ts">${relativeTime(comment.createdAt)}</time>
+        </div>
+        <div class="sm-comment-text">${esc(comment.text)}</div>
+        ${effectHtml ? `<div class="sm-comment-footer">${effectHtml}</div>` : ''}
+      </div>`;
+
+    if (comment.effect) {
+      const badge = el.querySelector<HTMLElement>('[data-auto-hide]');
+      if (badge) setTimeout(() => badge.classList.add('sm-effect-hidden'), 2200);
+    }
+
+    return el;
+  }
+}
+
+// ── CommentList ───────────────────────────────────────────────────────────────
+
+const MAX_BODY = 6; // max non-pinned comments visible
+
+class CommentList {
+  private el:       HTMLElement;
+  private rendered  = new Set<string>();
+  private topId:    string | null = null;
+
+  constructor(el: HTMLElement) {
+    this.el = el;
+  }
+
+  sync(comments: SocialComment[], isViral: boolean): void {
+    this.el.classList.toggle('sm-list-viral', isViral);
+
+    let added = false;
+    for (const c of comments) {
+      if (this.rendered.has(c.id)) continue;
+      this.rendered.add(c.id);
+      this._insert(c);
+      added = true;
+    }
+
+    if (added) this._trim();
+    this._refreshTimestamps();
+  }
+
+  private _insert(c: SocialComment): void {
+    const isTop = this.topId === null && c.type !== 'negative';
+    if (isTop) this.topId = c.id;
+
+    const bubble = CommentBubble.create(c, isTop);
+
+    if (isTop) {
+      this.el.prepend(bubble);
+    } else {
+      this.el.appendChild(bubble);
+    }
+  }
+
+  private _trim(): void {
+    const nonPinned = [
+      ...this.el.querySelectorAll<HTMLElement>('.sm-comment-row:not(.sm-comment-top-pin)'),
+    ];
+    while (nonPinned.length > MAX_BODY) {
+      nonPinned.shift()?.remove();
+    }
+  }
+
+  private _refreshTimestamps(): void {
+    this.el.querySelectorAll<HTMLElement>('.sm-comment-ts').forEach(el => {
+      const row     = el.closest<HTMLElement>('[data-created]');
+      const created = Number(row?.dataset.created ?? 0);
+      if (created) el.textContent = relativeTime(created);
+    });
+  }
+}
+
+// ── SocialFeed ────────────────────────────────────────────────────────────────
+
 export class SocialFeed {
   private container: HTMLElement | null = null;
   private cb:        FeedCallbacks;
   private rendered   = new Set<string>();
-  // Track which comment IDs have been rendered per post
-  private renderedComments = new Map<string, Set<string>>();
+  private lists      = new Map<string, CommentList>();
 
   constructor(cb: FeedCallbacks) {
     this.cb = cb;
@@ -24,7 +144,7 @@ export class SocialFeed {
   update(posts: SocialPost[]): void {
     if (!this.container) return;
 
-    const empty = document.getElementById('sm-feed-empty') as HTMLElement | null;
+    const empty = document.getElementById('sm-feed-empty');
     if (posts.length === 0) {
       if (empty) empty.style.display = '';
       return;
@@ -34,7 +154,6 @@ export class SocialFeed {
     for (const post of posts) {
       if (!this.rendered.has(post.id)) {
         this.rendered.add(post.id);
-        this.renderedComments.set(post.id, new Set());
         this._addCard(post);
         if (post.outcome === 'viral' && !post.viralNotified) {
           post.viralNotified = true;
@@ -42,7 +161,7 @@ export class SocialFeed {
         }
       }
       this._refreshCard(post);
-      this._syncComments(post);
+      this.lists.get(post.id)?.sync(post.liveComments, post.outcome === 'viral' && !post.settled);
     }
   }
 
@@ -52,15 +171,15 @@ export class SocialFeed {
     const ptm = POST_TYPE_META[post.postType];
 
     const card = document.createElement('div');
-    card.className       = `sm-post-card sm-post-outcome-${post.outcome}`;
-    card.dataset.postId  = post.id;
+    card.className      = `sm-post-card sm-post-outcome-${post.outcome}`;
+    card.dataset.postId = post.id;
     card.innerHTML = `
       <div class="sm-post-header">
         <span class="sm-post-platform" style="color:${pm.color}">${pm.icon} ${pm.label}</span>
         <span class="sm-post-type">${ptm.icon} ${ptm.label}</span>
         <span class="sm-post-badge sm-badge-growing" id="badge-${post.id}">POSTING…</span>
       </div>
-      <div class="sm-post-text">${this._esc(post.text)}</div>
+      <div class="sm-post-text">${esc(post.text)}</div>
       <div class="sm-post-stats">
         <span class="sm-stat-item">❤️ <span id="likes-${post.id}">0</span></span>
         <span class="sm-stat-item">🔁 <span id="reposts-${post.id}">0</span></span>
@@ -71,18 +190,23 @@ export class SocialFeed {
         <span class="sm-impact-risk-tag">+${post.riskAdded} heat</span>
         ${post.crowdAmount > 0 ? `<span class="sm-impact-crowd-tag" id="crowd-tag-${post.id}">…</span>` : ''}
       </div>
-      <div class="sm-comment-list" id="comments-list-${post.id}"></div>`;
+      <div class="sm-comment-section" id="comments-list-${post.id}"></div>`;
 
     c.prepend(card);
+
+    const listEl = card.querySelector<HTMLElement>('.sm-comment-section')!;
+    this.lists.set(post.id, new CommentList(listEl));
   }
 
   private _refreshCard(post: SocialPost): void {
-    const likesEl    = document.getElementById(`likes-${post.id}`);
-    const repostsEl  = document.getElementById(`reposts-${post.id}`);
-    const commentsEl = document.getElementById(`comments-${post.id}`);
-    const hypeTag    = document.getElementById(`hype-tag-${post.id}`);
-    const crowdTag   = document.getElementById(`crowd-tag-${post.id}`);
-    const badge      = document.getElementById(`badge-${post.id}`);
+    const get = (id: string) => document.getElementById(id);
+
+    const likesEl    = get(`likes-${post.id}`);
+    const repostsEl  = get(`reposts-${post.id}`);
+    const commentsEl = get(`comments-${post.id}`);
+    const hypeTag    = get(`hype-tag-${post.id}`);
+    const crowdTag   = get(`crowd-tag-${post.id}`);
+    const badge      = get(`badge-${post.id}`);
     const card       = this.container?.querySelector<HTMLElement>(`[data-post-id="${post.id}"]`);
 
     if (likesEl)    likesEl.textContent    = this._fmt(post.likes);
@@ -105,40 +229,9 @@ export class SocialFeed {
     }
   }
 
-  private _syncComments(post: SocialPost): void {
-    const list = document.getElementById(`comments-list-${post.id}`);
-    if (!list) return;
-
-    const rendered = this.renderedComments.get(post.id);
-    if (!rendered) return;
-
-    for (const comment of post.liveComments) {
-      if (rendered.has(comment.id)) continue;
-      rendered.add(comment.id);
-      this._addComment(list, comment);
-    }
-  }
-
-  private _addComment(list: HTMLElement, comment: SocialComment): void {
-    const bubble = document.createElement('div');
-    bubble.className = `sm-comment-bubble sm-comment-${comment.type}`;
-    bubble.textContent = comment.text;
-    list.appendChild(bubble);
-
-    // Limit visible comments to last 5
-    const all = list.querySelectorAll('.sm-comment-bubble');
-    if (all.length > 5) {
-      all[0].remove();
-    }
-  }
-
   private _fmt(n: number): string {
     if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
     if (n >= 1_000)     return `${(n / 1_000).toFixed(1)}K`;
     return String(n);
-  }
-
-  private _esc(t: string): string {
-    return t.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
   }
 }

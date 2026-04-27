@@ -239,9 +239,8 @@ export class BlackMarketSystem {
     const [cMin, cMax] = crowdBase[outcome];
     const crowdAmount  = Math.round(cMin + Math.random() * (cMax - cMin));
 
-    // Comment interval: viral posts get rapid comments, flops get few
     const baseInterval: Record<PostOutcome, number> = {
-      flop: 20, normal: 8, strong: 5, viral: 2,
+      flop: 14, normal: 5, strong: 2, viral: 1,
     };
 
     const post: SocialPost = {
@@ -464,9 +463,11 @@ export class BlackMarketSystem {
 
       // Generate live comments
       post.commentTimer--;
-      if (post.commentTimer <= 0 && post.liveComments.length < 6) {
+      if (post.commentTimer <= 0) {
         const comment = pickComment(this.heat);
         post.liveComments.push(comment);
+        // Trim array to avoid unbounded growth — keep only last 50 entries
+        if (post.liveComments.length > 50) post.liveComments.splice(0, post.liveComments.length - 50);
 
         // Comments affect hype / heat
         if (comment.type === 'positive') {
@@ -477,9 +478,9 @@ export class BlackMarketSystem {
 
         // Reset timer — viral posts get faster comments
         const baseInterval: Record<string, number> = {
-          flop: 18, normal: 7, strong: 4, viral: 2,
+          flop: 14, normal: 5, strong: 2, viral: 1,
         };
-        post.commentTimer = baseInterval[post.outcome] + Math.floor(Math.random() * 4);
+        post.commentTimer = baseInterval[post.outcome] + Math.floor(Math.random() * 3);
       }
 
       if (post.likes >= post.targetLikes || post.age > 90) {
