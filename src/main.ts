@@ -365,10 +365,12 @@ const renderer = new Renderer({
 
 const bmPanel = new BlackMarketPanel(bmSystem);
 bmPanel.mount(document.getElementById('bm-panel-mount')!, {
-  showToast: (msg, type) => renderer.showToast(msg, type as 'success' | 'error' | 'info' | 'chaos'),
-  addCash:   (amt) => { player.cash += amt; },
-  deductCash:(amt) => { player.cash = Math.max(0, player.cash - amt); },
-  openBmTab: () => renderer.switchTab('bm'),
+  showToast:    (msg, type) => renderer.showToast(msg, type as 'success' | 'error' | 'info' | 'chaos'),
+  addCash:      (amt) => { player.cash += amt; },
+  deductCash:   (amt) => { player.cash = Math.max(0, player.cash - amt); },
+  openBmTab:    () => renderer.switchTab('bm'),
+  onCallStart:  () => soundSystem.play('call_connect'),
+  onCallEnd:    () => soundSystem.play('call_hangup'),
 });
 renderer.setBmPanel(bmPanel);
 if (bmSystem.unlocked) renderer.revealBlackMarketTab();
@@ -377,13 +379,16 @@ if (bmSystem.unlocked) renderer.revealBlackMarketTab();
 
 const hfPanel = new HedgeFundPanel(hfSystem);
 hfPanel.mount(document.getElementById('hf-panel-mount')!, {
-  showToast: (msg, type) => renderer.showToast(msg, type as 'success' | 'error' | 'info' | 'chaos'),
-  addCash:   (amt) => { player.cash += amt; },
-  deductCash:(amt) => { player.cash = Math.max(0, player.cash - amt); },
-  openHfTab: () => renderer.switchTab('hf'),
+  showToast:    (msg, type) => renderer.showToast(msg, type as 'success' | 'error' | 'info' | 'chaos'),
+  addCash:      (amt) => { player.cash += amt; },
+  deductCash:   (amt) => { player.cash = Math.max(0, player.cash - amt); },
+  openHfTab:    () => renderer.switchTab('hf'),
+  onCallStart:  () => soundSystem.play('call_connect'),
+  onCallEnd:    () => soundSystem.play('call_hangup'),
 });
 renderer.setHfPanel(hfPanel);
 if (hfSystem.unlocked) renderer.revealHedgeFundTab();
+renderer.setSoundSystem(soundSystem);
 
 // ── Tutorial ──────────────────────────────────────────────────────────────────
 // Returning players who existed before tutorial feature → skip automatically.
