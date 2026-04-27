@@ -13,6 +13,7 @@ import { LEVELED_UPGRADES } from '../systems/UpgradeSystem.ts';
 import {
   formatCurrency, formatPct, timeAgo, createEl,
   getInsightText, getMomentumArrow,
+  getStockTags, getRecommendedPlay, getOpportunityScore, getTimingAdvice, getRiskWarning,
 } from './components.ts';
 import { flashPrice, spawnFloatingText, pulseElement, sweepRow, spawnBuyParticles, spawnCashDelta } from './animations.ts';
 
@@ -331,32 +332,46 @@ export class Renderer {
       </div>
       <button id="ip-close" class="btn-icon">✕</button>
     </div>
-    <div class="ip-bars">
-      <div class="ip-bar-row">
-        <span class="ip-bar-label">🔥 Hype</span>
-        <div class="ip-track"><div class="ip-fill ip-hype-fill"></div></div>
-        <span class="ip-pct" id="ip-hype-val">0%</span>
-      </div>
-      <div class="ip-bar-row">
-        <span class="ip-bar-label">📈 Momentum</span>
-        <div class="ip-track ip-mom-track">
-          <div class="ip-mom-center"></div>
-          <div class="ip-fill ip-mom-fill"></div>
-        </div>
-        <span class="ip-pct ip-arrow-val" id="ip-mom-val">→</span>
-      </div>
-      <div class="ip-bar-row">
-        <span class="ip-bar-label">🛡 Stability</span>
-        <div class="ip-track"><div class="ip-fill ip-stab-fill"></div></div>
-        <span class="ip-pct" id="ip-stab-val">0%</span>
-      </div>
-      <div class="ip-bar-row">
-        <span class="ip-bar-label">🎲 Risk</span>
-        <div class="ip-track"><div class="ip-fill ip-risk-fill"></div></div>
-        <span class="ip-pct" id="ip-risk-val">0%</span>
-      </div>
+
+    <div id="ip-tags" class="ip-tags"></div>
+
+    <div class="ip-section">
+      <div class="ip-section-label">RECOMMENDED PLAY</div>
+      <div id="ip-play" class="ip-play">—</div>
+      <div id="ip-play-sub" class="ip-play-sub"></div>
     </div>
-    <div id="ip-text" class="ip-text"></div>
+
+    <div class="ip-stats-grid">
+      <span id="ip-hype-badge" class="stat-badge sl-muted">—</span>
+      <span id="ip-mom-badge"  class="stat-badge sl-muted">—</span>
+      <span id="ip-stab-badge" class="stat-badge sl-muted">—</span>
+      <span id="ip-risk-badge" class="stat-badge sl-muted">—</span>
+    </div>
+
+    <div class="ip-section">
+      <div class="ip-section-label">ANALYSIS</div>
+      <div id="ip-analysis" class="ip-analysis-text"></div>
+    </div>
+
+    <div class="ip-section">
+      <div class="ip-section-label">OPPORTUNITY SCORE</div>
+      <div id="ip-score" class="ip-score"></div>
+    </div>
+
+    <div class="ip-section">
+      <div class="ip-section-label">TIMING</div>
+      <div id="ip-timing" class="ip-timing tim-neutral">—</div>
+    </div>
+
+    <div id="ip-risk-warn-row" class="ip-section hidden">
+      <div class="ip-section-label">⚠️ RISK WARNING</div>
+      <div id="ip-risk-warn" class="ip-risk-warn"></div>
+    </div>
+
+    <div class="ip-actions">
+      <button id="ip-buy-btn"  class="btn btn-buy  btn-sm ip-act-btn">Buy 1</button>
+      <button id="ip-sell-btn" class="btn btn-sell btn-sm ip-act-btn">Sell 1</button>
+    </div>
   </div>
 </div>`;
 
@@ -369,6 +384,12 @@ export class Renderer {
     document.getElementById('intel-close')!.addEventListener('click', () => this.hideIntelModal());
     document.getElementById('ip-close')!.addEventListener('click', () => this.hideInsightPanel());
     document.getElementById('insight-bg')!.addEventListener('click', () => this.hideInsightPanel());
+    document.getElementById('ip-buy-btn')!.addEventListener('click', () => {
+      if (this.openInsightId) this.callbacks.onBuy(this.openInsightId, 1);
+    });
+    document.getElementById('ip-sell-btn')!.addEventListener('click', () => {
+      if (this.openInsightId) this.callbacks.onSell(this.openInsightId, 1);
+    });
     document.getElementById('modal-overlay')!.addEventListener('click', (e) => {
       if (e.target === document.getElementById('modal-overlay')) this.hideModal();
     });
@@ -539,17 +560,23 @@ export class Renderer {
       changeEl.textContent = formatPct(pct);
       changeEl.className = 'asset-change ' + (pct >= 0 ? 'green' : 'red');
 
-      // ── Live indicators: hype bar + momentum arrow ─────────────────────
-      const hypeFill = row.querySelector('.ind-hype-fill') as HTMLElement;
-      if (hypeFill) hypeFill.style.width = `${Math.round(asset.hype * 100)}%`;
+      // ── Live indicators: labeled stat badges ──────────────────────────
+      const hypeL = asset.getHypeLabel(), momL = asset.getMomentumLabel(),
+            stabL = asset.getStabilityLabel(), riskL = asset.getRiskLabel();
+      const hb = row.querySelector('.ind-hype-badge') as HTMLElement | null;
+      if (hb) { hb.textContent = `${hypeL.icon} Hype: ${hypeL.text}`; hb.className = `stat-badge ${hypeL.cls} ind-hype-badge`; }
+      const mb = row.querySelector('.ind-mom-badge')  as HTMLElement | null;
+      if (mb) { mb.textContent = `${momL.icon} ${momL.text}`;         mb.className = `stat-badge ${momL.cls} ind-mom-badge`; }
+      const sb = row.querySelector('.ind-stab-badge') as HTMLElement | null;
+      if (sb) { sb.textContent = `${stabL.icon} ${stabL.text}`;       sb.className = `stat-badge ${stabL.cls} ind-stab-badge`; }
+      const rb = row.querySelector('.ind-risk-badge') as HTMLElement | null;
+      if (rb) { rb.textContent = `${riskL.icon} Risk: ${riskL.text}`; rb.className = `stat-badge ${riskL.cls} ind-risk-badge`; }
 
-      const momEl = row.querySelector('.mom-arrow') as HTMLElement;
-      if (momEl) {
-        const arrow = getMomentumArrow(asset.momentum);
-        momEl.textContent = arrow;
-        const isUp = asset.momentum > 0.006;
-        const isDown = asset.momentum < -0.006;
-        momEl.className = `mom-arrow ${isUp ? 'green' : isDown ? 'red' : 'muted'} ${Math.abs(asset.momentum) > 0.02 ? 'mom-strong' : ''}`;
+      // ── Stock tags ─────────────────────────────────────────────────────
+      const tagsEl = row.querySelector('.asset-tags') as HTMLElement | null;
+      if (tagsEl) {
+        const newHtml = getStockTags(asset).map(t => `<span class="asset-tag ${t.cls}">${t.label}</span>`).join('');
+        if (tagsEl.innerHTML !== newHtml) tagsEl.innerHTML = newHtml;
       }
 
       // ── Risk flicker + hype glow (CSS-driven, just toggle classes) ─────
@@ -617,23 +644,12 @@ export class Renderer {
         </div>
         <div class="asset-news-line hidden"></div>
         <div class="asset-indicators">
-          <div class="ind-item" title="Hype — decays over time, boosts price when high">
-            <span class="ind-icon">🔥</span>
-            <div class="ind-bar"><div class="ind-fill ind-hype-fill"></div></div>
-          </div>
-          <div class="ind-item" title="Momentum — direction of recent price movement">
-            <span class="ind-icon">📈</span>
-            <span class="mom-arrow muted">→</span>
-          </div>
-          <div class="ind-item" title="Stability — resistance to crashes (static)">
-            <span class="ind-icon">🛡</span>
-            <div class="ind-bar"><div class="ind-fill ind-stab-fill"></div></div>
-          </div>
-          <div class="ind-item" title="Risk — chance of extreme price shocks (static)">
-            <span class="ind-icon">🎲</span>
-            <div class="ind-bar"><div class="ind-fill ind-risk-fill"></div></div>
-          </div>
+          <span class="stat-badge sl-muted ind-hype-badge">🔥 Hype: —</span>
+          <span class="stat-badge sl-muted ind-mom-badge">→ —</span>
+          <span class="stat-badge sl-muted ind-stab-badge">🛡 —</span>
+          <span class="stat-badge sl-muted ind-risk-badge">🎲 —</span>
         </div>
+        <div class="asset-tags"></div>
       </div>
       <div class="asset-price-col">
         <span class="asset-price">$0.00</span>
@@ -648,11 +664,17 @@ export class Renderer {
       </div>
     `;
 
-    // Set static indicator bars once (stability + risk never change)
-    (row.querySelector('.ind-stab-fill') as HTMLElement).style.width = `${asset.stability * 100}%`;
-    (row.querySelector('.ind-risk-fill') as HTMLElement).style.width  = `${asset.risk * 100}%`;
-    // Initial hype bar
-    (row.querySelector('.ind-hype-fill') as HTMLElement).style.width  = `${asset.hype * 100}%`;
+    // Set initial badge values so they're readable before first tick
+    const _hL = asset.getHypeLabel(), _mL = asset.getMomentumLabel(),
+          _sL = asset.getStabilityLabel(), _rL = asset.getRiskLabel();
+    const _hb = row.querySelector('.ind-hype-badge') as HTMLElement;
+    _hb.textContent = `${_hL.icon} Hype: ${_hL.text}`; _hb.className = `stat-badge ${_hL.cls} ind-hype-badge`;
+    const _mb = row.querySelector('.ind-mom-badge')  as HTMLElement;
+    _mb.textContent = `${_mL.icon} ${_mL.text}`;        _mb.className = `stat-badge ${_mL.cls} ind-mom-badge`;
+    const _sb = row.querySelector('.ind-stab-badge') as HTMLElement;
+    _sb.textContent = `${_sL.icon} ${_sL.text}`;        _sb.className = `stat-badge ${_sL.cls} ind-stab-badge`;
+    const _rb = row.querySelector('.ind-risk-badge') as HTMLElement;
+    _rb.textContent = `${_rL.icon} Risk: ${_rL.text}`; _rb.className = `stat-badge ${_rL.cls} ind-risk-badge`;
 
     const qtyInput = row.querySelector('.qty-input') as HTMLInputElement;
     row.querySelector('.btn-buy')!.addEventListener('click', () => {
@@ -1170,61 +1192,73 @@ export class Renderer {
     const asset = market.getAsset(assetId);
     if (!asset) return;
     this.openInsightId = assetId;
-
-    document.getElementById('ip-emoji')!.textContent = asset.emoji;
-    document.getElementById('ip-name')!.textContent  = asset.name;
-    document.getElementById('ip-price')!.textContent = formatCurrency(asset.price);
-
-    // Reset fills to 0 so the CSS transition animates from zero on open
-    this.setIpFill('ip-hype-fill',  0);
-    this.setIpFill('ip-stab-fill',  0);
-    this.setIpFill('ip-risk-fill',  0);
-    this.setIpFill('ip-mom-fill',   0);
-
-    // Show panel first so the element has dimensions, then animate fills
+    this._populateInsightPanel(asset);
     document.getElementById('insight-bg')!.classList.add('visible');
     document.getElementById('insight-panel')!.classList.add('visible');
-
-    requestAnimationFrame(() => {
-      requestAnimationFrame(() => {
-        this.setIpFill('ip-hype-fill', asset.hype * 100);
-        this.setIpFill('ip-stab-fill', asset.stability * 100);
-        this.setIpFill('ip-risk-fill', asset.risk * 100);
-        // Momentum: 50% = neutral; >50% = positive (green), <50% = negative (red)
-        const momPct = ((asset.momentum / 0.05 + 1) / 2) * 100;
-        this.setIpFill('ip-mom-fill', Math.max(0, Math.min(100, momPct)));
-        document.getElementById('ip-hype-val')!.textContent = `${(asset.hype * 100).toFixed(0)}%`;
-        document.getElementById('ip-stab-val')!.textContent = `${(asset.stability * 100).toFixed(0)}%`;
-        document.getElementById('ip-risk-val')!.textContent = `${(asset.risk * 100).toFixed(0)}%`;
-        document.getElementById('ip-mom-val')!.textContent  = getMomentumArrow(asset.momentum);
-        document.getElementById('ip-text')!.textContent     = getInsightText(asset);
-      });
-    });
   }
 
   private refreshInsightPanel(market: Market): void {
     if (!this.openInsightId) return;
     const asset = market.getAsset(this.openInsightId);
     if (!asset) return;
+    this._populateInsightPanel(asset);
+  }
 
-    document.getElementById('ip-price')!.textContent = formatCurrency(asset.price);
-    this.setIpFill('ip-hype-fill', asset.hype * 100);
-    const momPct = ((asset.momentum / 0.05 + 1) / 2) * 100;
-    this.setIpFill('ip-mom-fill', Math.max(0, Math.min(100, momPct)));
-    document.getElementById('ip-hype-val')!.textContent = `${(asset.hype * 100).toFixed(0)}%`;
-    document.getElementById('ip-mom-val')!.textContent  = getMomentumArrow(asset.momentum);
-    document.getElementById('ip-text')!.textContent     = getInsightText(asset);
+  private _populateInsightPanel(asset: Asset): void {
+    const g = (id: string) => document.getElementById(id)!;
+
+    g('ip-emoji').textContent = asset.emoji;
+    g('ip-name').textContent  = asset.name;
+    g('ip-price').textContent = formatCurrency(asset.price);
+
+    // Tags
+    const tags = getStockTags(asset);
+    g('ip-tags').innerHTML = tags.length
+      ? tags.map(t => `<span class="asset-tag ${t.cls}">${t.label}</span>`).join('')
+      : '<span class="ip-no-tags">no signals</span>';
+
+    // Recommended play
+    const play = getRecommendedPlay(asset);
+    const playEl = g('ip-play');
+    playEl.textContent = play.action;
+    playEl.className   = `ip-play ${play.cls}`;
+    g('ip-play-sub').textContent = play.sub;
+
+    // Stat badges
+    const hL = asset.getHypeLabel(), mL = asset.getMomentumLabel(),
+          sL = asset.getStabilityLabel(), rL = asset.getRiskLabel();
+    const hb = g('ip-hype-badge'); hb.textContent = `${hL.icon} Hype: ${hL.text}`; hb.className = `stat-badge ${hL.cls}`;
+    const mb = g('ip-mom-badge');  mb.textContent = `${mL.icon} ${mL.text}`;        mb.className = `stat-badge ${mL.cls}`;
+    const sb = g('ip-stab-badge'); sb.textContent = `${sL.icon} ${sL.text}`;        sb.className = `stat-badge ${sL.cls}`;
+    const rb = g('ip-risk-badge'); rb.textContent = `${rL.icon} Risk: ${rL.text}`;  rb.className = `stat-badge ${rL.cls}`;
+
+    // Analysis
+    g('ip-analysis').textContent = getInsightText(asset);
+
+    // Opportunity score
+    const score = getOpportunityScore(asset);
+    g('ip-score').innerHTML =
+      Array.from({ length: 5 }, (_, i) =>
+        `<span class="ip-star${i < score ? ' ip-star-on' : ''}">${i < score ? '★' : '☆'}</span>`,
+      ).join('') + `<span class="ip-score-num">${score}/5</span>`;
+
+    // Timing
+    const timing = getTimingAdvice(asset);
+    const timingEl = g('ip-timing');
+    timingEl.textContent = timing.text;
+    timingEl.className   = `ip-timing ${timing.cls}`;
+
+    // Risk warning
+    const warn = getRiskWarning(asset);
+    const warnRow = g('ip-risk-warn-row');
+    if (warn) { warnRow.classList.remove('hidden'); g('ip-risk-warn').textContent = warn; }
+    else        warnRow.classList.add('hidden');
   }
 
   hideInsightPanel(): void {
     this.openInsightId = null;
     document.getElementById('insight-panel')!.classList.remove('visible');
     document.getElementById('insight-bg')!.classList.remove('visible');
-  }
-
-  private setIpFill(cls: string, pct: number): void {
-    const el = document.querySelector(`.${cls}`) as HTMLElement | null;
-    if (el) el.style.width = `${pct}%`;
   }
 
   // ── Rank-up popup ─────────────────────────────────────────────────────────

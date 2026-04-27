@@ -99,6 +99,100 @@ export function getInsightText(asset: Asset): string {
   return '📊 Mixed signals. No clear edge right now. Watch for momentum or hype changes.';
 }
 
+// ── Stock tags ────────────────────────────────────────────────────────────────
+
+export interface StockTag { label: string; cls: string; }
+
+export function getStockTags(asset: Asset): StockTag[] {
+  const tags: StockTag[] = [];
+  const { hype, momentum, stability, risk } = asset;
+
+  if (momentum > 0.022)       tags.push({ label: '🚀 SURGING',   cls: 'tag-surge' });
+  else if (momentum > 0.008)  tags.push({ label: '📈 TRENDING',  cls: 'tag-trend' });
+  else if (momentum < -0.022) tags.push({ label: '💥 CRASHING',  cls: 'tag-crash' });
+  else if (momentum < -0.008) tags.push({ label: '📉 FALLING',   cls: 'tag-fall' });
+
+  if (hype > 0.65)            tags.push({ label: '🔥 HYPED',     cls: 'tag-hype' });
+  if (stability > 0.65)       tags.push({ label: '🛡 STABLE',    cls: 'tag-stable' });
+  else if (risk > 0.7)        tags.push({ label: '🎲 HIGH RISK', cls: 'tag-risk' });
+
+  if (hype < 0.12 && momentum < -0.005
+      && !tags.some(t => t.cls === 'tag-fall' || t.cls === 'tag-crash'))
+    tags.push({ label: '😴 DYING', cls: 'tag-dying' });
+
+  return tags.slice(0, 3);
+}
+
+// ── Recommended play ──────────────────────────────────────────────────────────
+
+export interface RecommendedPlay { action: string; sub: string; cls: string; }
+
+export function getRecommendedPlay(asset: Asset): RecommendedPlay {
+  const { hype, momentum, stability, risk } = asset;
+  if (risk > 0.8)
+    return { action: 'DEGEN PLAY',    sub: 'Extreme volatility — moon or crater.',        cls: 'rp-degen' };
+  if (momentum > 0.018 && hype > 0.4)
+    return { action: 'STRONG BUY',    sub: 'Momentum + hype aligned. Classic pump.',      cls: 'rp-strong' };
+  if (hype > 0.65 && momentum > 0)
+    return { action: 'SHORT TERM BUY', sub: 'Ride the hype spike. Exit before it fades.', cls: 'rp-short' };
+  if (momentum > 0.008)
+    return { action: 'BUY',           sub: 'Upward trend in progress.',                   cls: 'rp-buy' };
+  if (stability > 0.65 && momentum >= 0)
+    return { action: 'BUY & HOLD',    sub: 'Stable grower. Safe long-term hold.',         cls: 'rp-hold' };
+  if (momentum < -0.018)
+    return { action: 'AVOID',         sub: "Strong downtrend. Don't catch this knife.",   cls: 'rp-avoid' };
+  if (momentum < -0.005)
+    return { action: 'WAIT',          sub: 'Price falling. Watch for reversal.',          cls: 'rp-wait' };
+  return   { action: 'WATCH',         sub: 'No clear edge. Monitor for signals.',         cls: 'rp-wait' };
+}
+
+// ── Opportunity score (1–5) ───────────────────────────────────────────────────
+
+export function getOpportunityScore(asset: Asset): number {
+  const { hype, momentum, stability, risk } = asset;
+  let s = 1;
+  if (momentum > 0.025)      s += 2;
+  else if (momentum > 0.01)  s += 1.5;
+  else if (momentum > 0.003) s += 0.5;
+  else if (momentum < -0.01) s -= 0.5;
+  if (hype > 0.65)      s += 1;
+  else if (hype > 0.4)  s += 0.5;
+  if (stability > 0.65) s += 0.5;
+  if (risk > 0.8)       s = Math.max(s, 2.5);
+  return Math.min(5, Math.max(1, Math.round(s)));
+}
+
+// ── Timing advice ─────────────────────────────────────────────────────────────
+
+export interface TimingAdvice { text: string; cls: string; }
+
+export function getTimingAdvice(asset: Asset): TimingAdvice {
+  const { hype, momentum } = asset;
+  if (momentum > 0.015)                  return { text: 'ENTER NOW — momentum is active',             cls: 'tim-now' };
+  if (hype > 0.65 && momentum < 0.005)  return { text: 'SELL SOON — hype peaking, reversal near',   cls: 'tim-sell' };
+  if (hype > 0.5 && momentum > 0)       return { text: 'ENTER NOW — hype + positive momentum',      cls: 'tim-now' };
+  if (momentum < -0.015)                 return { text: 'EXIT NOW — sharp decline in progress',       cls: 'tim-exit' };
+  if (momentum < -0.005)                 return { text: 'WAIT — price falling, watch for reversal',  cls: 'tim-wait' };
+  return                                          { text: 'WATCH — no timing edge right now',         cls: 'tim-neutral' };
+}
+
+// ── Risk warning ──────────────────────────────────────────────────────────────
+
+export function getRiskWarning(asset: Asset): string | null {
+  const { hype, stability, risk, momentum } = asset;
+  if (risk > 0.8)
+    return '🌋 Extreme shock risk — price can swing ±40% at any moment';
+  if (hype > 0.65 && stability < 0.25)
+    return '💣 High hype + low stability = violent crash risk when hype fades';
+  if (momentum > 0.02 && risk > 0.5)
+    return '⚠️ Fast-moving + high risk. Gains can reverse in seconds.';
+  if (momentum < -0.015)
+    return '📉 Strong downtrend — buying here means catching a falling knife';
+  if (stability < 0.15)
+    return '💀 Fragile structure — one bad event could destroy this position';
+  return null;
+}
+
 // ── Trade feedback ────────────────────────────────────────────────────────────
 
 export function getTradeInsight(asset: Asset, action: 'buy' | 'sell'): string {
