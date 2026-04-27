@@ -18,6 +18,15 @@ import { TutorialOverlay } from './ui/TutorialOverlay.ts';
 import { getTradeInsight } from './ui/components.ts';
 import { screenFlash, screenShake } from './ui/animations.ts';
 
+// Cash gifted to the player on each rank-up — makes the moment feel rewarding
+const RANK_UP_BONUS: Record<string, number> = {
+  day_trader:  500,
+  intern:      3_000,
+  manipulator: 15_000,
+  wolf:        75_000,
+  overlord:    200_000,
+};
+
 // ── Bootstrap ────────────────────────────────────────────────────────────────
 
 const market          = new Market();
@@ -56,6 +65,11 @@ const idleSystem = new IdleSystem(
         screenFlash('good');
         soundSystem.play('rank_up');
         eventSystem.addEntry(`🎖 Rank up: ${newRank.name}!`, 'good');
+        const bonus = RANK_UP_BONUS[newRank.id] ?? 0;
+        if (bonus > 0) {
+          player.cash += bonus;
+          renderer.showToast(`🎖 ${newRank.name}! Bonus: +$${bonus.toLocaleString()}`, 'success');
+        }
       }
 
       // BM unlock check

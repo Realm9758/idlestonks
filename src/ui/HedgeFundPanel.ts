@@ -1,5 +1,5 @@
 import type {
-  HedgeFundSystem, HfInvestorTemplate, HfCallMods,
+  HedgeFundSystem, HfInvestorTemplate, HfCallMods, HfStrategy,
 } from '../systems/HedgeFundSystem.ts';
 import { screenShake, screenFlash } from './animations.ts';
 
@@ -30,14 +30,20 @@ const UNLOCK_CHAT: ChatMsg[] = [
 ];
 
 const TUTORIAL_CHAT: ChatMsg[] = [
-  { side: 'left',  text: "ok. YourFund Capital is live. 💼" },
-  { side: 'left',  text: "start by calling investors — see the Recruit section." },
-  { side: 'left',  text: "every investor type is different. conservatives want safety. aggressives want returns." },
-  { side: 'left',  text: "watch the Reputation meter. high rep = inbound calls. low rep = withdrawals." },
-  { side: 'left',  text: "fees come in daily. performance fees hit when you make new highs." },
-  { side: 'left',  text: "oh — and hire staff. the analyst helps close deals. lawyer keeps regulators off your back." },
-  { side: 'right', text: "understood. let's build this thing." },
-  { side: 'left',  text: "that's the spirit. 🫡" },
+  { side: 'left',  text: "YourFund Capital is live. 💼 let me walk you through this." },
+  { side: 'left',  text: "CAPITAL: that's investor money. you don't own it — they do. your job: grow it." },
+  { side: 'right', text: "what's my cut?" },
+  { side: 'left',  text: "FEES. 2% per year just to manage. 20% of any new profit above previous highs." },
+  { side: 'left',  text: "PERFORMANCE is the 7-day average return on their capital. that's what investors watch." },
+  { side: 'left',  text: "positive returns → satisfaction goes up. negative too long → they withdraw." },
+  { side: 'right', text: "how do I keep them from leaving?" },
+  { side: 'left',  text: "STRATEGY MODE. pick it at the top of the fund card." },
+  { side: 'left',  text: "conservative = softer swings. cautious investors stay calm. aggressives get bored." },
+  { side: 'left',  text: "aggressive = amplified returns AND losses. aggressives thrive. conservatives panic." },
+  { side: 'left',  text: "match your strategy to who you have. watch each investor's satisfaction bar." },
+  { side: 'left',  text: "REPUTATION matters too. above 70 — investors call you. below 40 — expect withdrawals." },
+  { side: 'right', text: "ok. who do I call first?" },
+  { side: 'left',  text: "Tyler. easiest to close. see Recruit below. 👇" },
 ];
 
 // ── Investor dialogue ──────────────────────────────────────────────────────
@@ -223,6 +229,7 @@ export class HedgeFundPanel {
   private _panelHtml(): string {
     return `
 <div class="hf-panel-inner">
+  <div id="hf-alert-bar" class="hf-alert-bar hidden"></div>
   <div class="hf-layout">
 
     <div class="hf-chat-col">
@@ -245,25 +252,36 @@ export class HedgeFundPanel {
         </div>
         <div class="hf-fund-stats-row">
           <div class="hf-fstat">
-            <span class="hf-fstat-label">AUM</span>
+            <span class="hf-fstat-label">CAPITAL</span>
             <span id="hf-aum" class="hf-fstat-val">$0</span>
           </div>
           <div class="hf-fstat">
-            <span class="hf-fstat-label">NAV</span>
-            <span id="hf-nav" class="hf-fstat-val">1.000×</span>
+            <span class="hf-fstat-label">7D RETURN</span>
+            <span id="hf-perf" class="hf-fstat-val">—</span>
           </div>
           <div class="hf-fstat">
-            <span class="hf-fstat-label">TOTAL FEES</span>
+            <span class="hf-fstat-label">YOUR FEES</span>
             <span id="hf-fees" class="hf-fstat-val hf-gold">$0</span>
           </div>
         </div>
+
+        <div class="hf-strategy">
+          <div class="hf-strategy-lbl">STRATEGY MODE</div>
+          <div class="hf-strat-btns">
+            <button class="hf-strat-btn" data-strat="conservative">🛡 Conservative</button>
+            <button class="hf-strat-btn hf-strat-active" data-strat="balanced">⚖️ Balanced</button>
+            <button class="hf-strat-btn" data-strat="aggressive">⚡ Aggressive</button>
+          </div>
+          <div id="hf-strat-desc" class="hf-strat-desc">Balanced risk. Neutral effect on all investor types.</div>
+        </div>
+
         <div class="hf-nav-chart-wrap">
           <div class="hf-nav-chart-label">14-DAY RETURNS</div>
           <div id="hf-nav-chart" class="hf-nav-chart"></div>
         </div>
       </div>
 
-      <div class="hf-section-header">👥 Fund Investors</div>
+      <div class="hf-section-header">👥 Investors</div>
       <div id="hf-investors" class="hf-investors"></div>
 
       <div class="hf-section-header">📞 Recruit</div>
@@ -297,6 +315,11 @@ export class HedgeFundPanel {
         <div id="hf-rep-fill" class="hf-rep-fill rep-mid" style="height:50%"></div>
       </div>
       <div id="hf-rep-label" class="hf-rep-label">50</div>
+      <div class="hf-rep-explanation">
+        <div class="hf-rep-eff hf-rep-eff-good">↑ 70+ Investors call you</div>
+        <div class="hf-rep-eff hf-rep-eff-mid">→ 40–70 Stable</div>
+        <div class="hf-rep-eff hf-rep-eff-bad">↓ &lt;40 Withdrawals likely</div>
+      </div>
       <div class="hf-divider"></div>
       <div class="hf-srow">
         <span class="hf-slbl">INVESTORS</span>
@@ -413,6 +436,13 @@ export class HedgeFundPanel {
       this.sys.hireLawyer();
       cb.showToast('⚖️ Lawyer hired! –40% reputation damage.', 'success');
       this.updateDisplay();
+    });
+
+    document.querySelectorAll<HTMLButtonElement>('.hf-strat-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        this.sys.setStrategy(btn.dataset.strat as HfStrategy);
+        this._updateStrategyUI();
+      });
     });
 
     document.getElementById('btn-accept-call')?.addEventListener('click',  () => this._acceptIncoming());
@@ -701,10 +731,24 @@ export class HedgeFundPanel {
     const s = this.sys;
     const g = (id: string) => document.getElementById(id);
 
+    // Fund overview
     g('hf-aum')!.textContent  = `$${Math.round(s.aum).toLocaleString()}`;
-    g('hf-nav')!.textContent  = `${s.fundNAV.toFixed(3)}×`;
     g('hf-fees')!.textContent = `$${Math.round(s.totalFeeEarned).toLocaleString()}`;
 
+    const avg7   = s.getRecentAvgReturn();
+    const perfEl = g('hf-perf');
+    if (perfEl) {
+      if (s.navHistory.length === 0) {
+        perfEl.textContent = '—';
+        perfEl.className   = 'hf-fstat-val';
+      } else {
+        const sign = avg7 >= 0 ? '+' : '';
+        perfEl.textContent = `${sign}${avg7.toFixed(2)}%`;
+        perfEl.className   = `hf-fstat-val ${avg7 >= 0 ? 'hf-perf-pos' : 'hf-perf-neg'}`;
+      }
+    }
+
+    // Reputation
     const repFill = g('hf-rep-fill') as HTMLElement | null;
     if (repFill) {
       repFill.style.height = `${s.reputation}%`;
@@ -713,6 +757,7 @@ export class HedgeFundPanel {
     const repLabel = g('hf-rep-label');
     if (repLabel) repLabel.textContent = Math.round(s.reputation).toString();
 
+    // Sidebar stats
     const invCount = g('hf-inv-count');
     if (invCount) invCount.textContent = `${s.getInvestors().length} / 5`;
     const callsEl = g('hf-calls-today');
@@ -722,19 +767,37 @@ export class HedgeFundPanel {
 
     // Staff buttons
     const analyBtn = g('btn-hire-analyst') as HTMLButtonElement | null;
-    if (analyBtn) {
-      analyBtn.disabled   = s.hasAnalyst;
-      analyBtn.textContent = s.hasAnalyst ? '✓ Hired' : '$5,000';
-    }
+    if (analyBtn) { analyBtn.disabled = s.hasAnalyst; analyBtn.textContent = s.hasAnalyst ? '✓ Hired' : '$5,000'; }
     const lawyBtn = g('btn-hire-lawyer') as HTMLButtonElement | null;
-    if (lawyBtn) {
-      lawyBtn.disabled    = s.hasLawyer;
-      lawyBtn.textContent = s.hasLawyer ? '✓ Hired' : '$15,000';
-    }
+    if (lawyBtn)  { lawyBtn.disabled  = s.hasLawyer;  lawyBtn.textContent  = s.hasLawyer  ? '✓ Hired' : '$15,000'; }
 
+    this._updateAlerts();
+    this._updateStrategyUI();
     this._updateNavChart();
     this._updateInvestorCards();
     this._updateRecruitCards();
+  }
+
+  private _updateAlerts(): void {
+    const bar = document.getElementById('hf-alert-bar');
+    if (!bar) return;
+    const alerts = this.sys.getAlerts();
+    if (alerts.length === 0) { bar.classList.add('hidden'); bar.innerHTML = ''; return; }
+    bar.classList.remove('hidden');
+    bar.innerHTML = alerts.map(a => `<div class="hf-alert hf-alert-${a.type}">${a.message}</div>`).join('');
+  }
+
+  private _updateStrategyUI(): void {
+    const DESCS: Record<string, string> = {
+      conservative: '🛡 Protect capital. Softens all return swings. Cautious investors stay calmer.',
+      balanced:     '⚖️ Balanced risk. Neutral effect on all investor types.',
+      aggressive:   '⚡ Chase returns. Amplifies gains AND losses. Aggressives thrive, conservatives panic.',
+    };
+    document.querySelectorAll<HTMLButtonElement>('.hf-strat-btn').forEach(btn => {
+      btn.classList.toggle('hf-strat-active', btn.dataset.strat === this.sys.strategyMode);
+    });
+    const desc = document.getElementById('hf-strat-desc');
+    if (desc) desc.textContent = DESCS[this.sys.strategyMode] ?? '';
   }
 
   private _updateNavChart(): void {
@@ -789,12 +852,13 @@ export class HedgeFundPanel {
             <div class="hf-inv-capital">$${inv.capital.toLocaleString()}</div>
           </div>
           <div class="hf-inv-sat-row">
-            <span class="hf-inv-sat-lbl">SATISFACTION</span>
+            <span id="hf-sat-emoji-${inv.id}" class="hf-sat-emoji">😊</span>
             <div class="hf-sat-track"><div class="hf-sat-fill" id="hf-sat-${inv.id}"></div></div>
             <span class="hf-sat-pct" id="hf-sat-pct-${inv.id}"></span>
           </div>
           <div class="hf-inv-footer">
-            <span id="hf-inv-days-${inv.id}">Day 0</span>
+            <span id="hf-inv-risk-${inv.id}" class="hf-risk-badge hf-risk-safe">● SAFE</span>
+            <span class="hf-inv-days" id="hf-inv-days-${inv.id}">Day 0</span>
           </div>`;
         container.appendChild(card);
       }
@@ -807,6 +871,18 @@ export class HedgeFundPanel {
       }
       const pctEl = document.getElementById(`hf-sat-pct-${inv.id}`);
       if (pctEl) pctEl.textContent = `${pct}%`;
+
+      const emojiEl = document.getElementById(`hf-sat-emoji-${inv.id}`);
+      if (emojiEl) emojiEl.textContent = pct >= 70 ? '😊' : pct >= 45 ? '😐' : '😟';
+
+      const risk    = this.sys.getWithdrawalRisk(inv.id);
+      const riskEl  = document.getElementById(`hf-inv-risk-${inv.id}`);
+      if (riskEl) {
+        const labels = { safe: '● SAFE', nervous: '⚠ NERVOUS', high: '🚨 WITHDRAWAL RISK' };
+        riskEl.textContent = labels[risk];
+        riskEl.className   = `hf-risk-badge hf-risk-${risk}`;
+      }
+
       const daysEl = document.getElementById(`hf-inv-days-${inv.id}`);
       if (daysEl) daysEl.textContent = `Day ${inv.daysInFund}`;
     }

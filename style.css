@@ -4295,3 +4295,113 @@ body {
 .header-actions {
   position: relative;
 }
+
+/* ── Hedge Fund — alert bar ──────────────────────────────────────────────── */
+.hf-alert-bar {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px 14px;
+  border-bottom: 1px solid rgba(255,255,255,0.06);
+}
+.hf-alert {
+  font-size: 12px;
+  padding: 6px 10px;
+  border-radius: 6px;
+  font-weight: 500;
+}
+.hf-alert-good    { background: rgba(61,220,132,0.10); color: #3ddc84; border-left: 3px solid #3ddc84; }
+.hf-alert-warning { background: rgba(244,196,48,0.10);  color: #f4c430; border-left: 3px solid #f4c430; }
+.hf-alert-danger  { background: rgba(255,90,90,0.10);   color: #ff6b6b; border-left: 3px solid #ff6b6b; }
+
+/* ── Hedge Fund — strategy mode ──────────────────────────────────────────── */
+.hf-strategy {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid rgba(255,255,255,0.06);
+}
+.hf-strategy-lbl {
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  color: #4a6070;
+  text-transform: uppercase;
+  margin-bottom: 8px;
+}
+.hf-strat-btns {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
+}
+.hf-strat-btn {
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 6px;
+  color: #7a8fa6;
+  font-size: 11px;
+  padding: 7px 4px;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+  text-align: center;
+}
+.hf-strat-btn:hover {
+  background: rgba(255,255,255,0.08);
+  color: #cdd;
+}
+.hf-strat-active {
+  background: rgba(111,179,255,0.12) !important;
+  border-color: rgba(111,179,255,0.35) !important;
+  color: #6fb3ff !important;
+}
+.hf-strat-desc {
+  font-size: 11px;
+  color: #5c7a9a;
+  margin-top: 7px;
+  line-height: 1.5;
+  min-height: 32px;
+}
+
+/* ── Hedge Fund — performance display ───────────────────────────────────── */
+.hf-perf-pos { color: #3ddc84 !important; }
+.hf-perf-neg { color: #ff6b6b !important; }
+
+/* ── Hedge Fund — investor card additions ───────────────────────────────── */
+.hf-sat-emoji {
+  font-size: 16px;
+  flex-shrink: 0;
+  line-height: 1;
+}
+.hf-inv-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 6px;
+}
+.hf-inv-days {
+  font-size: 10px;
+  color: #4a6070;
+}
+.hf-risk-badge {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+.hf-risk-safe    { color: #3ddc84; background: rgba(61,220,132,0.08); }
+.hf-risk-nervous { color: #f4c430; background: rgba(244,196,48,0.10); }
+.hf-risk-high    { color: #ff6b6b; background: rgba(255,107,107,0.12); animation: tag-crash-pulse 0.9s ease-in-out infinite; }
+
+/* ── Hedge Fund — reputation explanation ────────────────────────────────── */
+.hf-rep-explanation {
+  margin-top: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.hf-rep-eff {
+  font-size: 10px;
+  padding: 2px 0;
+}
+.hf-rep-eff-good { color: #3ddc84; }
+.hf-rep-eff-mid  { color: #7a8fa6; }
+.hf-rep-eff-bad  { color: #ff6b6b; }

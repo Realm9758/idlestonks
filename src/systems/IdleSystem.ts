@@ -65,6 +65,13 @@ export class IdleSystem {
     const newlyUnlocked = this.market.checkUnlocks(netWorth);
     for (const name of newlyUnlocked) this.callbacks.onUnlock(name);
 
+    // Flat passive income (Market Scanner + prestige scaling)
+    const flatIncome = this.upgradeSystem.getFlatPassiveIncome();
+    if (flatIncome > 0) {
+      this.player.cash += flatIncome;
+      this.player.totalEarned += flatIncome;
+    }
+
     // Passive dividend income
     const hasActiveNews = this.newsSystem ? this.newsSystem.getActive().length > 0 : false;
     const bonus = this.upgradeSystem.applyPassiveIncome(

@@ -14,13 +14,14 @@ const RANKS: Rank[] = [
   { id: 'day_trader',  name: 'Day Trader',         emoji: '📈', requiredNetWorth: 5_000 },
   { id: 'intern',      name: 'Hedge Fund Intern',  emoji: '💼', requiredNetWorth: 25_000 },
   { id: 'manipulator', name: 'Market Manipulator', emoji: '🕹️', requiredNetWorth: 100_000 },
+  { id: 'wolf',        name: 'Wall Street Wolf',   emoji: '🐺', requiredNetWorth: 400_000 },
   { id: 'overlord',    name: 'Financial Overlord', emoji: '👑', requiredNetWorth: 1_000_000 },
 ];
 
 // Feature ID → minimum rank index required
 const FEATURE_RANK_INDEX: Record<string, number> = {
-  black_market: 3, // 'manipulator'
-  hedge_fund:   4, // 'overlord'
+  black_market: 3, // 'manipulator' — $100k
+  hedge_fund:   4, // 'wolf'        — $400k
 };
 
 export class RankSystem {
@@ -72,7 +73,7 @@ export class RankSystem {
 
   getNextFeatureUnlock(netWorth: number): { label: string; atRank: Rank } | null {
     const di = this.displayIndex(netWorth);
-    const FEATURE_LABELS: Record<string, string> = { black_market: 'Black Market', hedge_fund: 'Hedge Fund' };
+    const FEATURE_LABELS: Record<string, string> = { black_market: 'Black Market', hedge_fund: 'Hedge Fund', wolf: 'Wall Street Wolf' };
     const sorted = Object.entries(FEATURE_RANK_INDEX).sort((a, b) => a[1] - b[1]);
     for (const [feature, rankIdx] of sorted) {
       if (rankIdx > di) {

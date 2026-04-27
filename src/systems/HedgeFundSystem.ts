@@ -1,4 +1,5 @@
 export type HfInvestorType = 'conservative' | 'aggressive' | 'whale';
+export type HfStrategy    = 'conservative' | 'balanced' | 'aggressive';
 
 export interface HfInvestorTemplate {
   id: string;
@@ -41,9 +42,15 @@ export interface HfConsequence {
   message: string;
 }
 
+export interface HfAlert {
+  type: 'good' | 'warning' | 'danger';
+  message: string;
+}
+
 export interface HfSaveState {
   unlocked: boolean;
   tutorialSeen: boolean;
+  strategyMode: HfStrategy;
   reputation: number;
   aum: number;
   fundNAV: number;
@@ -121,8 +128,9 @@ export const HF_INVESTOR_TEMPLATES: HfInvestorTemplate[] = [
 ];
 
 export class HedgeFundSystem {
-  unlocked     = false;
-  tutorialSeen = false;
+  unlocked      = false;
+  tutorialSeen  = false;
+  strategyMode: HfStrategy = 'balanced';
 
   reputation     = 50;     // 0–100
   aum            = 0;      // total live investor capital
@@ -171,6 +179,43 @@ export class HedgeFundSystem {
 
   canCall(): boolean {
     return !this.callCooldownSecs && this.callsToday < this.MAX_CALLS_PER_DAY;
+  }
+
+  setStrategy(mode: HfStrategy): void { this.strategyMode = mode; }
+
+  getWithdrawalRisk(investorId: string): 'safe' | 'nervous' | 'high' {
+    const inv  = this._investors.find(i => i.id === investorId);
+    const tmpl = this.getTemplate(investorId);
+    if (!inv || !tmpl) return 'safe';
+    const margin = inv.satisfaction - tmpl.withdrawThreshold;
+    if (margin < 0.08) return 'high';
+    if (margin < 0.22) return 'nervous';
+    return 'safe';
+  }
+
+  getAlerts(): HfAlert[] {
+    const alerts: HfAlert[] = [];
+    const avg7 = this.getRecentAvgReturn();
+
+    if (this.navHistory.length >= 3) {
+      if (avg7 > 4)        alerts.push({ type: 'good',    message: '📈 Strong performance — investor confidence rising' });
+      else if (avg7 < -3)  alerts.push({ type: 'danger',  message: '🔴 Poor returns — withdrawal risk elevated across fund' });
+      else if (avg7 < -1)  alerts.push({ type: 'warning', message: '⚠️ Performance slipping — watch investor satisfaction' });
+    }
+
+    for (const inv of this._investors) {
+      const tmpl = this.getTemplate(inv.id)!;
+      const risk = this.getWithdrawalRisk(inv.id);
+      if (risk === 'high')
+        alerts.push({ type: 'danger',  message: `🚨 ${tmpl.avatar} ${tmpl.name} — withdrawal imminent` });
+      else if (risk === 'nervous')
+        alerts.push({ type: 'warning', message: `⚠️ ${tmpl.avatar} ${tmpl.name} is getting nervous` });
+    }
+
+    if (this._investors.length > 0 && this.reputation < 35)
+      alerts.push({ type: 'danger', message: '🔴 Reputation critical — investors may withdraw' });
+
+    return alerts;
   }
 
   // ── Outgoing call ──────────────────────────────────────────────────────────
@@ -311,21 +356,33 @@ export class HedgeFundSystem {
     else if (avg7 < 0)  this.reputation = Math.max(0, this.reputation - 1);
 
     // ── Investor satisfaction + withdrawals ───────────────────────────────
+    // Strategy mode scales how investors perceive returns — conservative
+    // softens swings, aggressive amplifies them in both directions.
+    const stratMult = { conservative: 0.65, balanced: 1.0, aggressive: 1.35 }[this.strategyMode];
+    const perceivedReturn = dailyReturnPct * stratMult;
+
     const toRemove: string[] = [];
     for (const inv of this._investors) {
       inv.daysInFund++;
       const tmpl = this.getTemplate(inv.id)!;
 
       let delta = 0;
-      if      (dailyReturnPct >  3) delta =  0.07;
-      else if (dailyReturnPct >  0) delta =  0.02;
-      else if (dailyReturnPct < -5) delta = -0.14;
-      else if (dailyReturnPct < -1) delta = -0.06;
-      else                          delta = -0.01;
+      if      (perceivedReturn >  3) delta =  0.07;
+      else if (perceivedReturn >  0) delta =  0.02;
+      else if (perceivedReturn < -5) delta = -0.14;
+      else if (perceivedReturn < -1) delta = -0.06;
+      else                           delta = -0.01;
 
-      if (tmpl.type === 'conservative' && dailyReturnPct < 0) delta *= 1.6;
-      if (tmpl.type === 'aggressive'   && dailyReturnPct < 3) delta *= 1.2;
-      if (tmpl.type === 'whale'        && dailyReturnPct < 1) delta *= 1.3;
+      if (tmpl.type === 'conservative' && perceivedReturn < 0) delta *= 1.6;
+      if (tmpl.type === 'aggressive'   && perceivedReturn < 3) delta *= 1.2;
+      if (tmpl.type === 'whale'        && perceivedReturn < 1) delta *= 1.3;
+
+      // Strategy-type alignment bonus/penalty
+      if (this.strategyMode === 'conservative' && tmpl.type === 'conservative') delta += 0.01;
+      if (this.strategyMode === 'aggressive'   && tmpl.type === 'aggressive')   delta += 0.01;
+      if (this.strategyMode === 'conservative' && tmpl.type === 'aggressive')   delta -= 0.01;
+      if (this.strategyMode === 'aggressive'   && tmpl.type === 'conservative') delta -= 0.015;
+
       if (delta < 0) delta *= tmpl.patience;
 
       inv.satisfaction = Math.max(0, Math.min(1, inv.satisfaction + delta));
@@ -389,6 +446,7 @@ export class HedgeFundSystem {
     return {
       unlocked:        this.unlocked,
       tutorialSeen:    this.tutorialSeen,
+      strategyMode:    this.strategyMode,
       reputation:      this.reputation,
       aum:             this.aum,
       fundNAV:         this.fundNAV,
@@ -406,6 +464,7 @@ export class HedgeFundSystem {
   loadState(s: Partial<HfSaveState>): void {
     this.unlocked        = s.unlocked        ?? false;
     this.tutorialSeen    = s.tutorialSeen    ?? false;
+    this.strategyMode    = s.strategyMode    ?? 'balanced';
     this.reputation      = s.reputation      ?? 50;
     this.aum             = s.aum             ?? 0;
     this.fundNAV         = s.fundNAV         ?? 1.0;

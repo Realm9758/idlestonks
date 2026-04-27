@@ -21,6 +21,14 @@ export interface LeveledUpgradeDef {
 // One-time purchases (auto_trader and dividend_engine moved to LEVELED_UPGRADES)
 export const UPGRADES: UpgradeDefinition[] = [
   {
+    id: 'market_scanner',
+    name: 'Market Scanner',
+    emoji: '📡',
+    description: 'Basic feed monitor. Generates $0.25/tick in ad revenue. Scales with prestige.',
+    cost: 200,
+    unlockThreshold: 500,
+  },
+  {
     id: 'bloomberg',
     name: 'Bloomberg Terminal',
     emoji: '📰',
@@ -100,9 +108,9 @@ export const LEVELED_UPGRADES: LeveledUpgradeDef[] = [
     name: 'Dividend Engine',
     emoji: '💰',
     maxLevel: 5,
-    baseCost: 3000,
+    baseCost: 2000,
     costMultiplier: 2.5,
-    unlockNetWorth: 5000,
+    unlockNetWorth: 4000,
     levelDescriptions: [
       '0.05% of portfolio value per tick',
       '0.10% of portfolio value per tick',
@@ -208,6 +216,11 @@ export class UpgradeSystem {
 
   getEarningsMultiplier(): number {
     return Math.pow(2, this.prestigeCount);
+  }
+
+  getFlatPassiveIncome(): number {
+    if (!this.purchased.has('market_scanner')) return 0;
+    return 0.25 * this.getEarningsMultiplier();
   }
 
   getDividendRate(): number {

@@ -286,9 +286,11 @@ const EVENTS: GameEvent[] = [
     weight: 4,
     hint: '💸 Cash stimulus coming',
     apply: (_market, player) => {
-      const amount = Math.floor(200 + Math.random() * 1300);
+      const base = Math.min(Math.max(200, player.cash * 0.04), 8000);
+      const rand = Math.min(Math.max(1300, player.cash * 0.06), 15000) * Math.random();
+      const amount = Math.floor(base + rand);
       player.cash += amount;
-      return { message: `💸 Government stimulus drop! You received $${amount}!`, severity: 'good' };
+      return { message: `💸 Government stimulus drop! You received $${amount.toLocaleString()}!`, severity: 'good' };
     },
   },
 
