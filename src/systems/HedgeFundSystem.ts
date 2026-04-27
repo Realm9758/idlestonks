@@ -318,7 +318,7 @@ export class HedgeFundSystem {
 
     // Incoming call from recruitable even with no investors yet (reputation-gated)
     if (this._investors.length === 0) {
-      if (Math.random() < 0.10 && this.reputation >= 45 && !this._pendingIncoming) {
+      if (this.unlocked && Math.random() < 0.10 && this.reputation >= 45 && !this._pendingIncoming) {
         const pool = this.getRecruitableTemplates();
         if (pool.length > 0) {
           const tmpl = pool[Math.floor(Math.random() * pool.length)];
@@ -412,7 +412,7 @@ export class HedgeFundSystem {
     this._investors = this._investors.filter(i => !toRemove.includes(i.id));
 
     // Random inbound from new investor prospects
-    if (this.reputation >= 60 && Math.random() < 0.08
+    if (this.unlocked && this.reputation >= 60 && Math.random() < 0.08
         && this.getRecruitableTemplates().length > 0 && !this._pendingIncoming) {
       const pool = this.getRecruitableTemplates();
       const tmpl = pool[Math.floor(Math.random() * pool.length)];
