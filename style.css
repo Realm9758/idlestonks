@@ -5359,11 +5359,10 @@ body {
 .sm-comment-section {
   display: flex;
   flex-direction: column;
-  gap: 3px;
+  gap: 2px;
   margin-top: 6px;
   position: relative;
   border-radius: 10px;
-  padding: 2px 0;
   transition: box-shadow 0.4s ease;
 }
 
@@ -5447,9 +5446,10 @@ body {
 
 .sm-comment-header {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   gap: 5px;
   margin-bottom: 2px;
+  flex-wrap: nowrap;
 }
 
 .sm-comment-username {
@@ -5476,11 +5476,6 @@ body {
 }
 .sm-comment-positive .sm-comment-text { color: rgba(110,220,130,0.9); }
 .sm-comment-negative .sm-comment-text { color: rgba(248,100,93,0.88); }
-
-.sm-comment-footer {
-  margin-top: 4px;
-  min-height: 14px;
-}
 
 /* ── effect badge ── */
 .sm-effect-tag {

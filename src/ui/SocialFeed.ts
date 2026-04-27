@@ -36,10 +36,10 @@ class CommentBubble {
       ? `<span class="sm-top-label">⭐ Top Comment</span>`
       : '';
 
+    const effectKey  = comment.effect?.hype != null ? 'hype' : 'heat';
+    const effectVal  = comment.effect ? (comment.effect.hype ?? comment.effect.heat ?? 0) : 0;
     const effectHtml = comment.effect
-      ? `<span class="sm-effect-tag sm-effect-${comment.effect.hype != null ? 'hype' : 'heat'}" data-auto-hide>
-           ${comment.effect.hype != null ? `+${comment.effect.hype} hype` : `+${comment.effect.heat} heat`}
-         </span>`
+      ? `<span class="sm-effect-tag sm-effect-${effectKey}">+${effectVal} ${effectKey}</span>`
       : '';
 
     el.innerHTML = `
@@ -51,14 +51,17 @@ class CommentBubble {
         <div class="sm-comment-header">
           <span class="sm-comment-username">@${esc(comment.username)}</span>
           <time class="sm-comment-ts">${relativeTime(comment.createdAt)}</time>
+          ${effectHtml}
         </div>
         <div class="sm-comment-text">${esc(comment.text)}</div>
-        ${effectHtml ? `<div class="sm-comment-footer">${effectHtml}</div>` : ''}
       </div>`;
 
     if (comment.effect) {
-      const badge = el.querySelector<HTMLElement>('[data-auto-hide]');
-      if (badge) setTimeout(() => badge.classList.add('sm-effect-hidden'), 2200);
+      const badge = el.querySelector<HTMLElement>('.sm-effect-tag');
+      if (badge) {
+        setTimeout(() => badge.classList.add('sm-effect-hidden'), 2000);
+        setTimeout(() => badge.remove(), 2700);
+      }
     }
 
     return el;
