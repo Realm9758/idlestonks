@@ -51,12 +51,12 @@ export class Market {
     }
   }
 
-  manipulate(assetId: string): { success: boolean; message: string } {
+  manipulate(assetId: string, successBonus = 0): { success: boolean; message: string } {
     const asset = this.assets.get(assetId);
     if (!asset || !asset.isUnlocked) {
       return { success: false, message: 'Asset not found or not unlocked.' };
     }
-    if (Math.random() > 0.45) {
+    if (Math.random() > 0.45 - successBonus) {
       asset.trendBoost += 0.04;
       asset.shock(1.2 + Math.random() * 0.4);
       return { success: true, message: `📈 ${asset.emoji} ${asset.name} successfully pumped!` };

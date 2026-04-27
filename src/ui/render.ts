@@ -10,7 +10,7 @@ import type { HedgeFundPanel } from './HedgeFundPanel.ts';
 import type { SoundSystem } from '../systems/SoundSystem.ts';
 import type { Asset } from '../core/Asset.ts';
 import { INVESTOR_TIERS } from '../systems/InvestorSystem.ts';
-import { LEVELED_UPGRADES } from '../systems/UpgradeSystem.ts';
+import { PATH_UPGRADES } from '../systems/UpgradeSystem.ts';
 import {
   formatCurrency, formatPct, timeAgo, createEl,
   getInsightText, getMomentumArrow,
@@ -95,9 +95,9 @@ export class Renderer {
   private storedInvestorSystem: InvestorSystem | null = null;
 
   // Upgrades tab change detection
-  private lastCoreUpgradeKey = '';
-  private lastLeveledKey = '';
+  private lastUpgradeKey = '';
   private lastInvestorKey = '';
+  private activeUpgradePath: 'automation' | 'manipulation' | 'capital' = 'automation';
 
   // News change-detection
   private newsActiveKey = '';
@@ -271,10 +271,14 @@ export class Renderer {
   <!-- Upgrades tab panel -->
   <div id="upgrades-tab-panel" class="hidden">
     <div class="upg-tab-wrap">
-      <div class="upg-section-header">🔧 Core Upgrades</div>
-      <div id="upg-core-grid" class="upg-core-grid"></div>
-      <div class="upg-section-header">📈 Leveled Systems</div>
-      <div id="upg-leveled-grid" class="upg-leveled-grid"></div>
+      <div class="upg-path-tabs">
+        <button class="upg-path-tab upg-path-tab-active" data-path="automation">🤖 Automation</button>
+        <button class="upg-path-tab" data-path="manipulation">📢 Manipulation</button>
+        <button class="upg-path-tab" data-path="capital">📈 Capital</button>
+      </div>
+      <div id="upg-path-automation" class="upg-path-grid"></div>
+      <div id="upg-path-manipulation" class="upg-path-grid upg-path-hidden"></div>
+      <div id="upg-path-capital" class="upg-path-grid upg-path-hidden"></div>
       <div class="upg-section-header">👥 Investor Network</div>
       <p class="upg-investor-hint">Hire specialists who generate passive income based on your net worth every tick.</p>
       <div id="upg-investor-grid" class="upg-investor-grid"></div>
@@ -453,6 +457,18 @@ export class Renderer {
       if (!btn || btn.classList.contains('tab-locked')) return;
       this.switchTab(btn.dataset.tab as 'main' | 'upgrades' | 'bm' | 'hf');
     });
+    document.getElementById('upgrades-tab-panel')!.addEventListener('click', (e) => {
+      const btn = (e.target as HTMLElement).closest<HTMLElement>('[data-path]');
+      if (!btn) return;
+      const path = btn.dataset.path as 'automation' | 'manipulation' | 'capital';
+      this.activeUpgradePath = path;
+      document.querySelectorAll<HTMLElement>('.upg-path-tab').forEach(b => {
+        b.classList.toggle('upg-path-tab-active', b.dataset.path === path);
+      });
+      document.querySelectorAll<HTMLElement>('.upg-path-grid').forEach(g => {
+        g.classList.toggle('upg-path-hidden', g.id !== `upg-path-${path}`);
+      });
+    });
     document.getElementById('btn-dark')!.addEventListener('click', () => this.callbacks.onDarkModeToggle());
     document.getElementById('btn-skip-day')!.addEventListener('click', () => this.callbacks.onSkipDay());
     document.getElementById('btn-prestige')!.addEventListener('click', () => this.callbacks.onPrestige());
@@ -630,7 +646,7 @@ export class Renderer {
       // ── Insider AI arrows ──────────────────────────────────────────────
       const trendEl = row.querySelector('.asset-trend') as HTMLElement | null;
       if (trendEl) {
-        if (upgradeSystem.hasPurchased('insider_ai')) {
+        if (upgradeSystem.getSignalIntelLevel() >= 1) {
           trendEl.classList.remove('hidden');
           const t = asset.trend + asset.trendBoost;
           trendEl.textContent = t > 0.003 ? '▲▲' : t > 0 ? '▲' : t < -0.003 ? '▼▼' : '▼';
@@ -1006,10 +1022,11 @@ export class Renderer {
     skipBtn.disabled = false;
     skipBtn.title = 'Skip to next day instantly ($150)';
 
-    // Bloomberg hint bar
-    if (upgradeSystem.hasPurchased('bloomberg')) {
+    // Signal Intel hint bar
+    const sigLevel = upgradeSystem.getSignalIntelLevel();
+    if (sigLevel >= 2) {
       hintBar.classList.remove('hidden');
-      const hamster = upgradeSystem.hasPurchased('prediction_hamster');
+      const hamster = sigLevel >= 3;
       const prefix = hamster ? '🐹 Hamster senses:' : '📰 Intel:';
       hintBar.textContent = `${prefix} ${eventSystem.getHintText()}`;
       hintBar.className = `event-hint-bar ${hamster ? 'hint-hamster' : 'hint-bloomberg'}`;
@@ -1064,101 +1081,87 @@ export class Renderer {
     }
 
     const netWorth = player.getNetWorth(market);
-    const coreKey = upgradeSystem.getPurchased().sort().join(',');
-    const leveledKey = upgradeSystem.getAllLeveledUpgrades()
-      .map(u => `${u.id}:${upgradeSystem.getLevel(u.id)}`).join(',');
+    const upgradeKey = PATH_UPGRADES.map(u => `${u.id}:${upgradeSystem.getLevel(u.id)}`).join(',');
     const investorKey = this.storedInvestorSystem
       ? INVESTOR_TIERS.map(t => `${t.id}:${this.storedInvestorSystem!.getCount(t.id)}`).join(',')
       : '';
 
-    // Rebuild core section if purchases changed
-    if (coreKey !== this.lastCoreUpgradeKey) {
-      this.lastCoreUpgradeKey = coreKey;
-      this.buildCoreUpgradeCards(upgradeSystem);
+    if (upgradeKey !== this.lastUpgradeKey) {
+      this.lastUpgradeKey = upgradeKey;
+      this._buildPathCards(upgradeSystem, 'automation');
+      this._buildPathCards(upgradeSystem, 'manipulation');
+      this._buildPathCards(upgradeSystem, 'capital');
     }
 
-    // Rebuild leveled section if any level changed
-    if (leveledKey !== this.lastLeveledKey) {
-      this.lastLeveledKey = leveledKey;
-      this.buildLeveledUpgradeCards(upgradeSystem);
-    }
-
-    // Rebuild investor section if counts changed
     if (investorKey !== this.lastInvestorKey) {
       this.lastInvestorKey = investorKey;
       this.buildInvestorCards();
     }
 
-    // Refresh all button enabled states every tick
-    this.refreshCoreButtons(upgradeSystem, player, netWorth);
-    this.refreshLeveledButtons(upgradeSystem, player, netWorth);
+    this._refreshPathButtons(upgradeSystem, player, netWorth);
     this.refreshInvestorButtons(player, netWorth);
   }
 
-  private buildCoreUpgradeCards(upgradeSystem: UpgradeSystem): void {
-    const grid = document.getElementById('upg-core-grid')!;
+  private _buildPathCards(upgradeSystem: UpgradeSystem, path: 'automation' | 'manipulation' | 'capital'): void {
+    const grid = document.getElementById(`upg-path-${path}`)!;
     grid.innerHTML = '';
-    for (const upg of upgradeSystem.getAllUpgrades()) {
-      const owned = upgradeSystem.hasPurchased(upg.id);
-      const card = createEl('div', `upg-card upg-card-core${owned ? ' upg-owned' : ''}`);
+    for (const def of PATH_UPGRADES.filter(u => u.path === path)) {
+      const level = upgradeSystem.getLevel(def.id);
+      const maxLevel = def.levelCosts.length;
+      const maxed = level >= maxLevel;
+      const card = createEl('div', `upg-card upg-card-path${maxed ? ' upg-maxed' : ''}`);
+      const pips = Array.from({ length: maxLevel }, (_, i) =>
+        `<span class="upg-pip${i < level ? ' upg-pip-filled' : ''}"></span>`,
+      ).join('');
+      const currDesc = level > 0 ? def.levelEffects[level - 1] : 'Not yet purchased';
+      const nextDesc = !maxed ? def.levelEffects[level] : null;
+      const cost = upgradeSystem.getCost(def.id);
       card.innerHTML = `
-        <div class="upg-card-icon">${upg.emoji}</div>
-        <div class="upg-card-content">
-          <div class="upg-card-name">${upg.name}</div>
-          <div class="upg-card-desc">${upg.description}</div>
+        <div class="upg-path-header">
+          <span class="upg-card-icon">${def.emoji}</span>
+          <span class="upg-card-name">${def.name}</span>
+          <div class="upg-pips">${pips}</div>
+        </div>
+        <div class="upg-path-body">
+          <div class="upg-curr-effect">${level > 0 ? `<strong>Lv ${level}:</strong> ${currDesc}` : currDesc}</div>
+          ${nextDesc ? `<div class="upg-next-effect">→ Lv ${level + 1}: ${nextDesc}</div>` : ''}
         </div>
         <div class="upg-card-action">
-          ${owned
-            ? '<span class="upg-owned-badge">✓ OWNED</span>'
-            : `<button class="btn upg-buy-btn" data-upg-id="${upg.id}">${formatCurrency(upg.cost)}</button>`
+          ${maxed
+            ? '<span class="upg-maxed-badge">⭐ MAXED</span>'
+            : `<button class="btn upg-level-btn" data-upg-id="${def.id}">${cost ? `Upgrade — ${formatCurrency(cost)}` : '—'}</button>`
           }
         </div>`;
-      if (!owned) {
-        card.querySelector<HTMLButtonElement>('.upg-buy-btn')!.addEventListener('click', () => {
-          this.callbacks.onBuyUpgrade(upg.id);
-          this.lastCoreUpgradeKey = '';
+      if (!maxed) {
+        card.querySelector<HTMLButtonElement>('.upg-level-btn')!.addEventListener('click', () => {
+          this.callbacks.onBuyLeveledUpgrade(def.id);
+          this.lastUpgradeKey = '';
         });
       }
       grid.appendChild(card);
     }
   }
 
-  private buildLeveledUpgradeCards(upgradeSystem: UpgradeSystem): void {
-    const grid = document.getElementById('upg-leveled-grid')!;
-    grid.innerHTML = '';
-    for (const def of LEVELED_UPGRADES) {
-      const level = upgradeSystem.getLevel(def.id);
-      const maxed = level >= def.maxLevel;
-      const card = createEl('div', `upg-card upg-card-leveled${maxed ? ' upg-maxed' : ''}`);
-      const pips = Array.from({ length: def.maxLevel }, (_, i) =>
-        `<span class="upg-pip${i < level ? ' upg-pip-filled' : ''}">${i + 1}</span>`,
-      ).join('');
-      const currDesc = level > 0 ? def.levelDescriptions[level - 1] : 'Not yet purchased';
-      const nextDesc = level < def.maxLevel ? def.levelDescriptions[level] : null;
-      const cost = upgradeSystem.getLeveledCost(def.id);
-      card.innerHTML = `
-        <div class="upg-leveled-header">
-          <span class="upg-card-icon">${def.emoji}</span>
-          <span class="upg-card-name">${def.name}</span>
-          <div class="upg-pips">${pips}</div>
-        </div>
-        <div class="upg-leveled-body">
-          <div class="upg-curr-effect">${level > 0 ? `Lv ${level}: ${currDesc}` : currDesc}</div>
-          ${nextDesc ? `<div class="upg-next-effect">→ Lv ${level + 1}: ${nextDesc}</div>` : ''}
-        </div>
-        <div class="upg-card-action">
-          ${maxed
-            ? '<span class="upg-maxed-badge">⭐ MAXED</span>'
-            : `<button class="btn upg-level-btn" data-leveled-id="${def.id}">${cost ? `Upgrade — ${formatCurrency(cost)}` : '—'}</button>`
-          }
-        </div>`;
-      if (!maxed) {
-        card.querySelector<HTMLButtonElement>('.upg-level-btn')!.addEventListener('click', () => {
-          this.callbacks.onBuyLeveledUpgrade(def.id);
-          this.lastLeveledKey = '';
-        });
+  private _refreshPathButtons(upgradeSystem: UpgradeSystem, player: Player, netWorth: number): void {
+    for (const path of ['automation', 'manipulation', 'capital'] as const) {
+      const grid = document.getElementById(`upg-path-${path}`)!;
+      for (const btn of grid.querySelectorAll<HTMLButtonElement>('.upg-level-btn')) {
+        const id = btn.dataset.upgId!;
+        const def = PATH_UPGRADES.find(u => u.id === id);
+        if (!def) continue;
+        const cost = upgradeSystem.getCost(id);
+        if (cost === null) { btn.disabled = true; btn.textContent = 'MAXED'; continue; }
+        const unlocked = netWorth >= def.unlockNetWorth;
+        const canAfford = player.cash >= cost;
+        btn.disabled = !unlocked || !canAfford;
+        if (!unlocked) {
+          btn.textContent = `🔒 ${formatCurrency(def.unlockNetWorth)} NW`;
+          btn.classList.add('upg-locked');
+        } else {
+          btn.textContent = `Upgrade — ${formatCurrency(cost)}`;
+          btn.classList.remove('upg-locked');
+        }
       }
-      grid.appendChild(card);
     }
   }
 
@@ -1196,46 +1199,6 @@ export class Renderer {
         });
       }
       grid.appendChild(card);
-    }
-  }
-
-  private refreshCoreButtons(upgradeSystem: UpgradeSystem, player: Player, netWorth: number): void {
-    const grid = document.getElementById('upg-core-grid')!;
-    for (const btn of grid.querySelectorAll<HTMLButtonElement>('.upg-buy-btn')) {
-      const id = btn.dataset.upgId!;
-      const upg = upgradeSystem.getAllUpgrades().find(u => u.id === id);
-      if (!upg) continue;
-      const meetsThreshold = netWorth >= upg.unlockThreshold;
-      const canAfford = player.cash >= upg.cost;
-      btn.disabled = !meetsThreshold || !canAfford;
-      if (!meetsThreshold) {
-        btn.textContent = `🔒 ${formatCurrency(upg.unlockThreshold)} NW`;
-        btn.classList.add('upg-locked');
-      } else {
-        btn.textContent = formatCurrency(upg.cost);
-        btn.classList.remove('upg-locked');
-      }
-    }
-  }
-
-  private refreshLeveledButtons(upgradeSystem: UpgradeSystem, player: Player, netWorth: number): void {
-    const grid = document.getElementById('upg-leveled-grid')!;
-    for (const btn of grid.querySelectorAll<HTMLButtonElement>('.upg-level-btn')) {
-      const id = btn.dataset.leveledId!;
-      const def = LEVELED_UPGRADES.find(u => u.id === id);
-      if (!def) continue;
-      const cost = upgradeSystem.getLeveledCost(id);
-      if (cost === null) { btn.disabled = true; btn.textContent = 'MAXED'; return; }
-      const meetsThreshold = netWorth >= def.unlockNetWorth;
-      const canAfford = player.cash >= cost;
-      btn.disabled = !meetsThreshold || !canAfford;
-      if (!meetsThreshold) {
-        btn.textContent = `🔒 ${formatCurrency(def.unlockNetWorth)} NW`;
-        btn.classList.add('upg-locked');
-      } else {
-        btn.textContent = `Upgrade — ${formatCurrency(cost)}`;
-        btn.classList.remove('upg-locked');
-      }
     }
   }
 

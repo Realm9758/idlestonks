@@ -194,8 +194,15 @@ const savedData = saveSystem.load();
 if (savedData) {
   saveSystem.applyLoad(savedData, player, market, upgradeSystem, idleSystem, newsSystem, rankSystem, bmSystem, investorSystem, hfSystem);
   market.checkUnlocks(player.getNetWorth(market));
-  if (upgradeSystem.hasPurchased('volatility_damper')) market.applyVolatilityDamper();
-  if (upgradeSystem.hasPurchased('time_warp')) idleSystem.applyTimeWarp();
+  if (upgradeSystem.hasPurchased('market_mover')) market.applyVolatilityDamper();
+  idleSystem.setDaySpeed(upgradeSystem.getDaySpeedSeconds());
+  upgradeSystem.syncPlayerMultiplier(player);
+}
+
+function _applyUpgradeSideEffects(id: string, level: number): void {
+  if (id === 'day_engine') idleSystem.setDaySpeed(upgradeSystem.getDaySpeedSeconds());
+  if (id === 'market_mover' && level === 1) market.applyVolatilityDamper();
+  upgradeSystem.syncPlayerMultiplier(player);
 }
 
 // ── Renderer ──────────────────────────────────────────────────────────────────
@@ -280,29 +287,28 @@ const renderer = new Renderer({
   },
 
   onManipulate(assetId) {
-    if (player.cash < 1000) {
-      renderer.showToast('Need $1,000 to manipulate the market!', 'error');
+    const mutateCost = upgradeSystem.getManipulateCost();
+    if (player.cash < mutateCost) {
+      renderer.showToast(`Need $${mutateCost.toLocaleString()} to manipulate the market!`, 'error');
       renderer.hideModal();
       return;
     }
-    player.cash -= 1000;
-    const result = market.manipulate(assetId);
+    player.cash -= mutateCost;
+    const successBonus = upgradeSystem.getManipulateSuccessBonus();
+    const result = market.manipulate(assetId, successBonus);
     renderer.showToast(result.message, result.success ? 'success' : 'error');
     eventSystem.addEntry(result.message, result.success ? 'good' : 'bad');
     renderer.hideModal();
   },
 
   onBuyUpgrade(upgradeId) {
-    const result = upgradeSystem.buy(upgradeId, player.cash);
+    // All upgrades are now leveled — delegate to buyLevel handler
+    const result = upgradeSystem.buyLevel(upgradeId, player.cash);
     renderer.showToast(result.message, result.success ? 'success' : 'error');
     if (!result.success) return;
     player.cash = result.newCash;
     eventSystem.addEntry(result.message, 'good');
-    if (upgradeId === 'volatility_damper') market.applyVolatilityDamper();
-    if (upgradeId === 'time_warp') {
-      idleSystem.applyTimeWarp();
-      renderer.showToast('⚡ Days now pass in 30 seconds!', 'info');
-    }
+    _applyUpgradeSideEffects(upgradeId, result.newLevel);
   },
 
   onPrestige() {
@@ -350,7 +356,7 @@ const renderer = new Renderer({
   onSkipDay() {
     const ok = idleSystem.skipToNextDay();
     if (!ok) renderer.showToast('Need $150 to skip a day!', 'error');
-    else renderer.showToast('⏩ Day skipped!', 'info');
+    else renderer.showToast(upgradeSystem.skipDayIsFree() ? '⏩ Day skipped (free)!' : '⏩ Day skipped!', 'info');
   },
 
   onSetCash(amount: number) {
@@ -363,6 +369,7 @@ const renderer = new Renderer({
     if (result.success) {
       player.cash = result.newCash;
       eventSystem.addEntry(result.message, 'good');
+      _applyUpgradeSideEffects(id, result.newLevel);
     }
   },
 

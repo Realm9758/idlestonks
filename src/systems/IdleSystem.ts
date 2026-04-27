@@ -65,24 +65,6 @@ export class IdleSystem {
     const newlyUnlocked = this.market.checkUnlocks(netWorth);
     for (const name of newlyUnlocked) this.callbacks.onUnlock(name);
 
-    // Flat passive income (Market Scanner + prestige scaling)
-    const flatIncome = this.upgradeSystem.getFlatPassiveIncome();
-    if (flatIncome > 0) {
-      this.player.cash += flatIncome;
-      this.player.totalEarned += flatIncome;
-    }
-
-    // Passive dividend income
-    const hasActiveNews = this.newsSystem ? this.newsSystem.getActive().length > 0 : false;
-    const bonus = this.upgradeSystem.applyPassiveIncome(
-      this.player.getPortfolioValue(this.market),
-      hasActiveNews,
-    );
-    if (bonus > 0) {
-      this.player.cash += bonus;
-      this.player.totalEarned += bonus;
-    }
-
     // Investor passive income
     if (this.investorSystem) {
       const investorBonus = this.investorSystem.computeIncome(netWorth);
@@ -93,7 +75,7 @@ export class IdleSystem {
     }
 
     // Auto trader — leveled behavior
-    const traderLevel = this.upgradeSystem.getLevel('auto_trader');
+    const traderLevel = this.upgradeSystem.getBotLevel();
     if (traderLevel > 0) {
       this.autoTraderTimer++;
       const interval = traderLevel >= 4 ? 5 : traderLevel >= 2 ? 8 : 10;
@@ -123,7 +105,7 @@ export class IdleSystem {
 
   private fireDayEvents(): void {
     // Chaos events
-    const hamster = this.upgradeSystem.hasPurchased('prediction_hamster');
+    const hamster = this.upgradeSystem.getSignalIntelLevel() >= 3;
     const entry = this.eventSystem.dayTick(this.market, this.player, hamster);
     if (entry) this.callbacks.onEvent(entry);
 
@@ -170,14 +152,15 @@ export class IdleSystem {
 
   // ── Time controls ──────────────────────────────────────────────────────
 
-  applyTimeWarp(): void {
-    this.secondsPerDay = 30;
-  }
+  applyTimeWarp(): void { this.secondsPerDay = 30; }
+
+  setDaySpeed(seconds: number): void { this.secondsPerDay = seconds; }
 
   skipToNextDay(): boolean {
+    const free = this.upgradeSystem.skipDayIsFree();
     const cost = 150;
-    if (this.player.cash < cost) return false;
-    this.player.cash -= cost;
+    if (!free && this.player.cash < cost) return false;
+    if (!free) this.player.cash -= cost;
     this.secondsInDay = 0;
     this.dayCount++;
     this.fireDayEvents();

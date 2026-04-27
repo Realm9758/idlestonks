@@ -248,49 +248,90 @@ export class BlackMarketPanel {
 
   <div class="bm-tab-pane" id="bm-pane-calls">
     <div class="bm-layout">
+
+      <!-- LEFT: COMMS -->
       <div class="bm-chat-col">
         <div class="bm-chat-header">
           <div class="bm-chat-contact-row">
             <span class="bm-contact-dot">●</span>
             <span class="bm-contact-name">bro_crypto</span>
           </div>
-          <span class="bm-contact-status">online</span>
+          <span class="bm-contact-status">online · e2e encrypted</span>
         </div>
         <div id="bm-chat-messages" class="bm-chat-messages"></div>
       </div>
 
+      <!-- CENTER: OPERATIONS -->
       <div class="bm-ops-col">
         <div class="bm-stock-card">
           <div class="bm-stock-header">
-            <span class="bm-coin-name">🌑 MoonCoin</span>
-            <span class="bm-coin-tag">SYNTHETIC</span>
+            <div class="bm-coin-meta">
+              <span class="bm-coin-name">🌑 MoonCoin</span>
+              <span class="bm-coin-tag">SYNTHETIC ASSET</span>
+            </div>
+            <div class="bm-coin-live-wrap">
+              <span class="bm-live-dot"></span>
+              <span class="bm-live-label">LIVE</span>
+            </div>
           </div>
           <div id="bm-price" class="bm-price">$0.0100</div>
           <div class="bm-hype-row">
             <span class="bm-hype-label">HYPE</span>
             <div class="bm-hype-track"><div id="bm-hype-fill" class="bm-hype-fill" style="width:5%"></div></div>
+            <span id="bm-hype-pct" class="bm-hype-pct">5%</span>
           </div>
           <div class="bm-invested-row">
-            <span class="bm-invested-label">TOTAL INVESTED</span>
+            <span class="bm-invested-label">TOTAL POOL</span>
             <span id="bm-total-invested" class="bm-invested-val">$0</span>
           </div>
         </div>
-        <div class="bm-customers-header">👥 Targets</div>
+
+        <div class="bm-targets-hdr">
+          <span>TARGETS</span>
+          <span class="bm-targets-hint">tap to initiate call</span>
+        </div>
         <div id="bm-customers" class="bm-customers"></div>
+
         <button id="btn-rug-pull" class="btn-rug-pull" disabled>
           <span class="rug-icon">💀</span>
-          <span class="rug-text">RUG PULL</span>
+          <span class="rug-text">EXECUTE RUG PULL</span>
         </button>
       </div>
 
+      <!-- RIGHT: THREAT INTEL -->
       <div class="bm-risk-col">
-        <div class="bm-risk-title">🌡️ HEAT LEVEL</div>
-        <div class="bm-risk-meter-wrap">
-          <div id="bm-risk-fill" class="bm-risk-fill risk-low" style="height:0%"></div>
+
+        <div class="bm-intel-header">
+          <span class="bm-risk-title">THREAT LEVEL</span>
+          <span id="bm-threat-badge" class="bm-threat-badge bm-threat-safe">SAFE</span>
         </div>
-        <div id="bm-risk-label" class="bm-risk-label">0%</div>
-        <div id="bm-risk-warn" class="bm-risk-warn hidden">⚠️ HIGH HEAT</div>
+
+        <div class="bm-heat-meter-row">
+          <div class="bm-risk-meter-wrap">
+            <div id="bm-risk-fill" class="bm-risk-fill risk-low" style="height:0%"></div>
+          </div>
+          <div class="bm-heat-readout">
+            <div id="bm-risk-label" class="bm-risk-label">0%</div>
+            <div id="bm-risk-warn" class="bm-risk-warn hidden">⚠️ CRITICAL</div>
+          </div>
+        </div>
+
+        <!-- Shown when heat ≥ 60 -->
+        <div id="bm-case-block" class="bm-case-block hidden">
+          <div class="bm-case-block-title">🔍 UNDER INVESTIGATION</div>
+          <div id="bm-case-detail" class="hidden">
+            <div class="bm-case-prog-row">
+              <span class="bm-case-lbl">CASE PROGRESS</span>
+              <span id="bm-case-pct" class="bm-case-pct">0%</span>
+            </div>
+            <div class="bm-case-track">
+              <div id="bm-case-fill" class="bm-case-fill" style="width:0%"></div>
+            </div>
+          </div>
+        </div>
+
         <div class="bm-divider"></div>
+
         <div class="bm-stat-row">
           <span class="bm-stat-lbl">CALLS TODAY</span>
           <span id="bm-calls-today" class="bm-stat-val">0 / 5</span>
@@ -307,11 +348,13 @@ export class BlackMarketPanel {
           <span class="bm-stat-lbl">RUG PULLS</span>
           <span id="bm-rug-count" class="bm-stat-val">0</span>
         </div>
+
         <div id="bm-suspended-notice" class="bm-suspended-notice hidden">
           🚫 SUSPENDED<br>
           <span id="bm-lock-days" class="bm-lock-days">—</span>
         </div>
       </div>
+
     </div>
   </div>
 
@@ -703,12 +746,41 @@ export class BlackMarketPanel {
 
     const riskFill = g('bm-risk-fill') as HTMLElement | null;
     if (riskFill) {
-      riskFill.style.height = `${s.riskLevel}%`;
-      riskFill.className = `bm-risk-fill ${s.riskLevel < 35 ? 'risk-low' : s.riskLevel < 65 ? 'risk-mid' : 'risk-high'}`;
+      riskFill.style.height = `${s.heat}%`;
+      riskFill.className = `bm-risk-fill ${s.heat < 35 ? 'risk-low' : s.heat < 65 ? 'risk-mid' : 'risk-high'}`;
     }
     const riskLbl = g('bm-risk-label');
-    if (riskLbl) riskLbl.textContent = `${Math.round(s.riskLevel)}%`;
-    g('bm-risk-warn')?.classList.toggle('hidden', s.riskLevel < 65);
+    if (riskLbl) riskLbl.textContent = `${Math.round(s.heat)}%`;
+    g('bm-risk-warn')?.classList.toggle('hidden', s.heat < 85);
+
+    // Threat badge
+    const threatBadge = g('bm-threat-badge') as HTMLElement | null;
+    if (threatBadge) {
+      const lvl = s.getHeatLevel();
+      const MAP: Record<string, [string, string]> = {
+        safe:       ['SAFE',        'bm-threat-safe'],
+        suspicious: ['SUSPICIOUS',  'bm-threat-suspicious'],
+        watched:    ['UNDER WATCH', 'bm-threat-watched'],
+        danger:     ['⚠ CASE RISK', 'bm-threat-danger'],
+      };
+      const [label, cls] = MAP[lvl];
+      threatBadge.textContent = label;
+      threatBadge.className   = `bm-threat-badge ${cls}`;
+    }
+
+    // Hype percentage
+    const hypePct = g('bm-hype-pct') as HTMLElement | null;
+    if (hypePct) hypePct.textContent = `${(s.stock.hype * 100).toFixed(0)}%`;
+
+    // Case block (shows at heat ≥ 60)
+    g('bm-case-block')?.classList.toggle('hidden', s.heat < 60);
+    g('bm-case-detail')?.classList.toggle('hidden', !s.caseActive);
+    if (s.caseActive) {
+      const caseFill = g('bm-case-fill') as HTMLElement | null;
+      const casePct  = g('bm-case-pct');
+      if (caseFill) caseFill.style.width = `${s.caseProgress.toFixed(1)}%`;
+      if (casePct)  casePct.textContent  = `${Math.round(s.caseProgress)}%`;
+    }
 
     const callsEl = g('bm-calls-today');
     if (callsEl) callsEl.textContent = `${s.callsToday} / ${s.MAX_CALLS_PER_DAY}`;

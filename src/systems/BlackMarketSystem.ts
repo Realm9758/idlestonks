@@ -112,6 +112,7 @@ export class BlackMarketSystem {
 
   // Pending UI alerts (consumed by the panel each tick)
   pendingAlerts: BmAlert[] = [];
+  private _investigationWarned = false; // prevents re-firing the warning every tick
 
   callCooldownSecs = 0;
   readonly CALL_COOLDOWN     = 12;
@@ -428,15 +429,17 @@ export class BlackMarketSystem {
       }
     }
 
-    // Investigation warning at heat 60 (one-time)
-    if (this.heat >= 60 && this.heat < 65 && !this.caseActive) {
-      if (!this.pendingAlerts.some(a => a.type === 'investigation_warning')) {
-        this.pendingAlerts.push({
-          id: `alert_${Date.now()}`,
-          type: 'investigation_warning',
-          message: '⚠️ Authorities are watching your activity.',
-        });
-      }
+    // Reset warning flag if heat cools well below threshold
+    if (this.heat < 55) this._investigationWarned = false;
+
+    // Investigation warning — fires once per escalation above 60
+    if (this.heat >= 60 && !this.caseActive && !this._investigationWarned) {
+      this._investigationWarned = true;
+      this.pendingAlerts.push({
+        id: `alert_${Date.now()}`,
+        type: 'investigation_warning',
+        message: '⚠️ Authorities are watching your activity.',
+      });
     }
 
     // Posts: engagement growth + comment generation

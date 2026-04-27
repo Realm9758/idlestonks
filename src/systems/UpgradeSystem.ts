@@ -1,101 +1,56 @@
-export interface UpgradeDefinition {
-  id: string;
-  name: string;
-  emoji: string;
-  description: string;
-  cost: number;
-  unlockThreshold: number;
+export interface CoreUpgradeDef {
+  id: string; emoji: string; name: string; description: string;
+  cost: number; unlockThreshold: number;
 }
 
 export interface LeveledUpgradeDef {
+  id: string; emoji?: string; name?: string; description?: string;
+  maxLevel: number; cost: number; unlockThreshold: number;
+  unlockNetWorth: number; levelDescriptions: string[];
+}
+
+export const LEVELED_UPGRADES: LeveledUpgradeDef[] = [];
+
+export interface PathUpgradeDef {
   id: string;
   name: string;
   emoji: string;
-  maxLevel: number;
-  baseCost: number;
-  costMultiplier: number;
+  path: 'automation' | 'manipulation' | 'capital';
+  levelCosts: number[];
+  levelEffects: string[];
   unlockNetWorth: number;
-  levelDescriptions: string[];
 }
 
-// One-time purchases (auto_trader and dividend_engine moved to LEVELED_UPGRADES)
-export const UPGRADES: UpgradeDefinition[] = [
-  {
-    id: 'market_scanner',
-    name: 'Market Scanner',
-    emoji: '📡',
-    description: 'Basic feed monitor. Generates $0.25/tick in ad revenue. Scales with prestige.',
-    cost: 200,
-    unlockThreshold: 500,
-  },
-  {
-    id: 'bloomberg',
-    name: 'Bloomberg Terminal',
-    emoji: '📰',
-    description: 'Reveals a hint about the next scheduled event. Pair with Hamster for accuracy.',
-    cost: 500,
-    unlockThreshold: 1200,
-  },
-  {
-    id: 'double_yolo',
-    name: 'Double YOLO',
-    emoji: '🎲',
-    description: 'YOLO Invest bets up to 100% of your cash instead of 70%.',
-    cost: 600,
-    unlockThreshold: 2000,
-  },
-  {
-    id: 'volatility_damper',
-    name: 'Volatility Damper',
-    emoji: '🎚️',
-    description: 'Permanently reduces all asset volatility by 20%.',
-    cost: 2000,
-    unlockThreshold: 3000,
-  },
-  {
-    id: 'insider_ai',
-    name: 'Insider AI',
-    emoji: '🕵️',
-    description: 'Shows trend arrows on all assets. Probably legal.',
-    cost: 3000,
-    unlockThreshold: 5000,
-  },
-  {
-    id: 'time_warp',
-    name: 'Time Warp',
-    emoji: '⚡',
-    description: 'Doubles day speed — days pass in 30s instead of 60s.',
-    cost: 4000,
-    unlockThreshold: 6000,
-  },
-  {
-    id: 'prediction_hamster',
-    name: 'Prediction Hamster',
-    emoji: '🐹',
-    description: 'Bloomberg shows 75%-accurate hints about the next event type.',
-    cost: 7500,
-    unlockThreshold: 10000,
-  },
-  {
-    id: 'prestige_chip',
-    name: 'Prestige Protocol',
-    emoji: '⭐',
-    description: 'Reset everything for a permanent 2× earnings multiplier.',
-    cost: 50000,
-    unlockThreshold: 75000,
-  },
-];
+export interface UpgradeSaveData {
+  purchased: string[];
+  prestigeCount: number;
+  leveledLevels?: Record<string, number>;
+}
 
-export const LEVELED_UPGRADES: LeveledUpgradeDef[] = [
+export const PATH_UPGRADES: PathUpgradeDef[] = [
+  // ── AUTOMATION ────────────────────────────────────────────────────────────
   {
-    id: 'auto_trader',
-    name: 'Auto Trader',
+    id: 'signal_intel',
+    name: 'Signal Intel',
+    emoji: '📡',
+    path: 'automation',
+    unlockNetWorth: 1200,
+    levelCosts: [500, 3000, 7500, 20000],
+    levelEffects: [
+      'Shows trend arrows on all assets',
+      'Bloomberg hints on next scheduled event (40% accurate)',
+      '75%-accurate hints; Prediction Hamster becomes active',
+      'Exact event countdown timer visible in market view',
+    ],
+  },
+  {
+    id: 'automation_bot',
+    name: 'Automation Bot',
     emoji: '🤖',
-    maxLevel: 5,
-    baseCost: 800,
-    costMultiplier: 3.2,
+    path: 'automation',
     unlockNetWorth: 1800,
-    levelDescriptions: [
+    levelCosts: [800, 2560, 8192, 26214, 83886],
+    levelEffects: [
       'Buys cheapest affordable asset every 10s (8% cash budget)',
       'Targets highest-momentum asset, 8s interval',
       'News-aware: prioritises hyped assets during active events',
@@ -104,67 +59,131 @@ export const LEVELED_UPGRADES: LeveledUpgradeDef[] = [
     ],
   },
   {
-    id: 'dividend_engine',
-    name: 'Dividend Engine',
-    emoji: '💰',
-    maxLevel: 5,
-    baseCost: 2000,
-    costMultiplier: 2.5,
+    id: 'day_engine',
+    name: 'Day Engine',
+    emoji: '⚡',
+    path: 'automation',
+    unlockNetWorth: 6000,
+    levelCosts: [4000, 12000, 35000],
+    levelEffects: [
+      'Days pass in 45s instead of 60s',
+      'Days pass in 30s — maximum speed',
+      'Skip Day costs nothing (free)',
+    ],
+  },
+
+  // ── MANIPULATION ─────────────────────────────────────────────────────────
+  {
+    id: 'hype_engine',
+    name: 'Hype Engine',
+    emoji: '📢',
+    path: 'manipulation',
+    unlockNetWorth: 2000,
+    levelCosts: [600, 2000, 6000, 15000],
+    levelEffects: [
+      'Double YOLO enabled; Manipulate success +10%',
+      'Manipulate cost reduced to $750',
+      'Manipulate success +25%; post-event hype lasts 2 extra days',
+      'Manipulate success +40%; hype spreads to correlated assets',
+    ],
+  },
+  {
+    id: 'market_mover',
+    name: 'Market Mover',
+    emoji: '🎚️',
+    path: 'manipulation',
+    unlockNetWorth: 5000,
+    levelCosts: [2000, 8000, 25000],
+    levelEffects: [
+      'Reduces all asset volatility by 20%',
+      'Sell price +15% on all assets',
+      'Sell price +30% on all assets',
+    ],
+  },
+  {
+    id: 'network',
+    name: 'The Network',
+    emoji: '🕸️',
+    path: 'manipulation',
+    unlockNetWorth: 10000,
+    levelCosts: [3000, 10000, 30000],
+    levelEffects: [
+      '+1 Black Market call per day',
+      '+2 calls per day; BM cooldowns 30% faster',
+      '+3 calls per day; BM cooldowns 50% faster',
+    ],
+  },
+
+  // ── CAPITAL ──────────────────────────────────────────────────────────────
+  {
+    id: 'trade_amplifier',
+    name: 'Trade Amplifier',
+    emoji: '📈',
+    path: 'capital',
     unlockNetWorth: 4000,
-    levelDescriptions: [
-      '0.05% of portfolio value per tick',
-      '0.10% of portfolio value per tick',
-      '0.20% of portfolio value per tick',
-      '0.35% of portfolio value per tick',
-      '0.50% per tick + 2× multiplier during active news',
+    levelCosts: [2000, 5000, 12000, 30000, 75000],
+    levelEffects: [
+      'Sell gains +10%',
+      'Sell gains +25%',
+      'Sell gains +50%',
+      'Sell gains +80%',
+      'Sell gains +100% (doubled)',
+    ],
+  },
+  {
+    id: 'fund_optimizer',
+    name: 'Fund Optimizer',
+    emoji: '🏦',
+    path: 'capital',
+    unlockNetWorth: 50000,
+    levelCosts: [5000, 20000, 60000],
+    levelEffects: [
+      'HF management fee reduced to 1.5% (from 2%)',
+      'HF performance fee reduced to 15% (from 20%)',
+      'HF investors pay 1% entry fee; mgmt fee drops to 1%',
+    ],
+  },
+  {
+    id: 'prestige_chip',
+    name: 'Prestige Protocol',
+    emoji: '⭐',
+    path: 'capital',
+    unlockNetWorth: 75000,
+    levelCosts: [50000],
+    levelEffects: [
+      'Unlocks Prestige: reset everything for a permanent ×2 earnings multiplier',
     ],
   },
 ];
 
-export interface UpgradeSaveData {
-  purchased: string[];
-  prestigeCount: number;
-  leveledLevels?: Record<string, number>;
-}
-
 export class UpgradeSystem {
-  private purchased: Set<string>;
-  prestigeCount: number;
-  private leveledLevels = new Map<string, number>();
-
-  constructor() {
-    this.purchased = new Set();
-    this.prestigeCount = 0;
-  }
-
-  // Leveled upgrades count as "purchased" once at level >= 1 (backward compat)
-  hasPurchased(id: string): boolean {
-    if (LEVELED_UPGRADES.some(u => u.id === id)) {
-      return (this.leveledLevels.get(id) ?? 0) >= 1;
-    }
-    return this.purchased.has(id);
-  }
+  private levels = new Map<string, number>();
+  prestigeCount = 0;
 
   getLevel(id: string): number {
-    return this.leveledLevels.get(id) ?? 0;
+    return this.levels.get(id) ?? 0;
   }
 
-  getLeveledCost(id: string): number | null {
-    const def = LEVELED_UPGRADES.find(u => u.id === id);
+  hasPurchased(id: string): boolean {
+    return this.getLevel(id) >= 1;
+  }
+
+  getCost(id: string): number | null {
+    const def = PATH_UPGRADES.find(u => u.id === id);
     if (!def) return null;
-    const currentLevel = this.leveledLevels.get(id) ?? 0;
-    if (currentLevel >= def.maxLevel) return null;
-    return Math.round(def.baseCost * Math.pow(def.costMultiplier, currentLevel));
+    const level = this.getLevel(id);
+    if (level >= def.levelCosts.length) return null;
+    return def.levelCosts[level];
   }
 
   buyLevel(id: string, cash: number): { success: boolean; message: string; newCash: number; newLevel: number } {
-    const def = LEVELED_UPGRADES.find(u => u.id === id);
+    const def = PATH_UPGRADES.find(u => u.id === id);
     if (!def) return { success: false, message: 'Upgrade not found.', newCash: cash, newLevel: 0 };
-    const currentLevel = this.leveledLevels.get(id) ?? 0;
-    if (currentLevel >= def.maxLevel) {
+    const currentLevel = this.getLevel(id);
+    if (currentLevel >= def.levelCosts.length) {
       return { success: false, message: `${def.name} is already maxed!`, newCash: cash, newLevel: currentLevel };
     }
-    const cost = this.getLeveledCost(id)!;
+    const cost = def.levelCosts[currentLevel];
     if (cash < cost) {
       return {
         success: false,
@@ -174,7 +193,7 @@ export class UpgradeSystem {
       };
     }
     const newLevel = currentLevel + 1;
-    this.leveledLevels.set(id, newLevel);
+    this.levels.set(id, newLevel);
     return {
       success: true,
       message: `${def.emoji} ${def.name} upgraded to Level ${newLevel}!`,
@@ -183,87 +202,147 @@ export class UpgradeSystem {
     };
   }
 
-  getPurchased(): string[] {
-    return Array.from(this.purchased);
-  }
-
-  getAllUpgrades(): UpgradeDefinition[] {
-    return UPGRADES;
-  }
-
-  getAllLeveledUpgrades(): LeveledUpgradeDef[] {
-    return LEVELED_UPGRADES;
-  }
-
-  getPurchasedUpgrades(): UpgradeDefinition[] {
-    return UPGRADES.filter(u => this.purchased.has(u.id));
-  }
-
+  // Compat shim: one-time buy routes through buyLevel
   buy(id: string, cash: number): { success: boolean; message: string; newCash: number } {
-    const upgrade = UPGRADES.find(u => u.id === id);
-    if (!upgrade) return { success: false, message: 'Upgrade not found.', newCash: cash };
-    if (this.purchased.has(id)) return { success: false, message: 'Already purchased.', newCash: cash };
-    if (cash < upgrade.cost) {
-      return {
-        success: false,
-        message: `Need $${upgrade.cost.toLocaleString()}. $${(upgrade.cost - cash).toFixed(0)} short.`,
-        newCash: cash,
-      };
-    }
-    this.purchased.add(id);
-    return { success: true, message: `Purchased ${upgrade.emoji} ${upgrade.name}!`, newCash: cash - upgrade.cost };
+    const r = this.buyLevel(id, cash);
+    return { success: r.success, message: r.message, newCash: r.newCash };
   }
 
+  getPurchased(): string[] {
+    return Array.from(this.levels.entries()).filter(([, v]) => v > 0).map(([k]) => k);
+  }
+
+  // Legacy aliases so render.ts/main.ts don't need wholesale edits for now
+  getAllUpgrades(): CoreUpgradeDef[] { return []; }
+  getAllLeveledUpgrades(): LeveledUpgradeDef[] { return []; }
+  getLeveledCost(id: string): number | null { return this.getCost(id); }
+
+  // ── Behavioral queries ───────────────────────────────────────────────────
+
+  getBotLevel(): number { return this.getLevel('automation_bot'); }
+  getSignalIntelLevel(): number { return this.getLevel('signal_intel'); }
+
+  getDaySpeedSeconds(): number {
+    const l = this.getLevel('day_engine');
+    if (l >= 2) return 30;
+    if (l >= 1) return 45;
+    return 60;
+  }
+
+  skipDayIsFree(): boolean { return this.getLevel('day_engine') >= 3; }
+
+  getManipulateSuccessBonus(): number {
+    const l = this.getLevel('hype_engine');
+    if (l >= 4) return 0.40;
+    if (l >= 3) return 0.25;
+    if (l >= 1) return 0.10;
+    return 0;
+  }
+
+  getManipulateCost(): number {
+    return this.getLevel('hype_engine') >= 2 ? 750 : 1000;
+  }
+
+  isDoubleYoloEnabled(): boolean { return this.getLevel('hype_engine') >= 1; }
+
+  getNetworkBonusCalls(): number {
+    const l = this.getLevel('network');
+    if (l >= 3) return 3;
+    if (l >= 2) return 2;
+    if (l >= 1) return 1;
+    return 0;
+  }
+
+  getNetworkCooldownMult(): number {
+    const l = this.getLevel('network');
+    if (l >= 3) return 0.50;
+    if (l >= 2) return 0.70;
+    return 1.0;
+  }
+
+  getSellBoost(): number {
+    const tradeLevel = this.getLevel('trade_amplifier');
+    const tradeBonus = ([0, 0.10, 0.25, 0.50, 0.80, 1.00] as const)[Math.min(tradeLevel, 5)];
+    const mmLevel = this.getLevel('market_mover');
+    const mmBonus = mmLevel >= 3 ? 0.30 : mmLevel >= 2 ? 0.15 : 0;
+    return 1 + tradeBonus + mmBonus;
+  }
+
+  // Prestige-only multiplier (for prestige display logic)
   getEarningsMultiplier(): number {
     return Math.pow(2, this.prestigeCount);
   }
 
-  getFlatPassiveIncome(): number {
-    if (!this.purchased.has('market_scanner')) return 0;
-    return 0.25 * this.getEarningsMultiplier();
+  // Full sell multiplier = prestige × trade_amplifier × market_mover
+  getSellMultiplier(): number {
+    return this.getEarningsMultiplier() * this.getSellBoost();
   }
 
-  getDividendRate(): number {
-    const level = this.leveledLevels.get('dividend_engine') ?? 0;
-    const rates = [0, 0.0005, 0.001, 0.002, 0.0035, 0.005];
-    return (rates[Math.min(level, 5)] ?? 0) * this.getEarningsMultiplier();
+  syncPlayerMultiplier(player: { earningsMultiplier: number }): void {
+    player.earningsMultiplier = this.getSellMultiplier();
   }
 
-  applyPassiveIncome(portfolioValue: number, hasActiveNews = false): number {
-    const level = this.leveledLevels.get('dividend_engine') ?? 0;
-    if (level === 0) return 0;
-    const rate = this.getDividendRate();
-    const multiplier = level >= 5 && hasActiveNews ? 2 : 1;
-    return portfolioValue * rate * multiplier;
+  getFundMgmtFeePct(): number {
+    const l = this.getLevel('fund_optimizer');
+    if (l >= 3) return 1.0;
+    if (l >= 1) return 1.5;
+    return 2.0;
   }
 
-  prestige(): void {
-    this.prestigeCount++;
+  getFundPerfFeePct(): number {
+    return this.getLevel('fund_optimizer') >= 2 ? 15 : 20;
   }
+
+  hasFundEntryFee(): boolean { return this.getLevel('fund_optimizer') >= 3; }
+
+  prestige(): void { this.prestigeCount++; }
 
   saveState(): UpgradeSaveData {
     return {
-      purchased: Array.from(this.purchased),
+      purchased: [],
       prestigeCount: this.prestigeCount,
-      leveledLevels: Object.fromEntries(this.leveledLevels),
+      leveledLevels: Object.fromEntries(this.levels),
     };
   }
 
   load(data: UpgradeSaveData): void {
-    const purchased = data.purchased ?? [];
-    // Migrate old one-time auto_trader / dividend_engine to leveled system
-    if (purchased.includes('auto_trader') && !data.leveledLevels?.['auto_trader']) {
-      this.leveledLevels.set('auto_trader', 1);
+    const old = new Set(data.purchased ?? []);
+    const ll = data.leveledLevels ?? {};
+
+    // signal_intel absorbs old insight upgrades
+    let sigLevel = ll['signal_intel'] ?? 0;
+    if (old.has('prediction_hamster') || ll['prediction_hamster']) sigLevel = Math.max(sigLevel, 3);
+    else if (old.has('bloomberg') || ll['bloomberg']) sigLevel = Math.max(sigLevel, 2);
+    else if (old.has('insider_ai')) sigLevel = Math.max(sigLevel, 1);
+
+    // automation_bot from old auto_trader
+    const botLevel = Math.max(ll['automation_bot'] ?? 0, ll['auto_trader'] ?? (old.has('auto_trader') ? 1 : 0));
+
+    // day_engine from old time_warp (30s = L2)
+    const dayLevel = Math.max(ll['day_engine'] ?? 0, old.has('time_warp') ? 2 : 0);
+
+    // hype_engine from old double_yolo
+    const hypeLevel = Math.max(ll['hype_engine'] ?? 0, old.has('double_yolo') ? 1 : 0);
+
+    // market_mover from old volatility_damper
+    const mmLevel = Math.max(ll['market_mover'] ?? 0, old.has('volatility_damper') ? 1 : 0);
+
+    // prestige_chip (was one-time, now L1)
+    const prestigeLevel = Math.max(ll['prestige_chip'] ?? 0, old.has('prestige_chip') ? 1 : 0);
+
+    if (sigLevel > 0) this.levels.set('signal_intel', sigLevel);
+    if (botLevel > 0) this.levels.set('automation_bot', botLevel);
+    if (dayLevel > 0) this.levels.set('day_engine', dayLevel);
+    if (hypeLevel > 0) this.levels.set('hype_engine', hypeLevel);
+    if (mmLevel > 0) this.levels.set('market_mover', mmLevel);
+    if (prestigeLevel > 0) this.levels.set('prestige_chip', prestigeLevel);
+
+    // New IDs with no old equivalent
+    for (const id of ['trade_amplifier', 'fund_optimizer', 'network'] as const) {
+      const v = ll[id] ?? 0;
+      if (v > 0) this.levels.set(id, v);
     }
-    if (purchased.includes('dividend_engine') && !data.leveledLevels?.['dividend_engine']) {
-      this.leveledLevels.set('dividend_engine', 1);
-    }
-    if (data.leveledLevels) {
-      for (const [id, level] of Object.entries(data.leveledLevels)) {
-        this.leveledLevels.set(id, level);
-      }
-    }
-    this.purchased = new Set(purchased.filter(id => !LEVELED_UPGRADES.some(u => u.id === id)));
+
     this.prestigeCount = data.prestigeCount ?? 0;
   }
 }
