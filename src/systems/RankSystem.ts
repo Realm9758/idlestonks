@@ -20,6 +20,7 @@ const RANKS: Rank[] = [
 // Feature ID → minimum rank index required
 const FEATURE_RANK_INDEX: Record<string, number> = {
   black_market: 3, // 'manipulator'
+  hedge_fund:   4, // 'overlord'
 };
 
 export class RankSystem {
@@ -71,7 +72,7 @@ export class RankSystem {
 
   getNextFeatureUnlock(netWorth: number): { label: string; atRank: Rank } | null {
     const di = this.displayIndex(netWorth);
-    const FEATURE_LABELS: Record<string, string> = { black_market: 'Black Market' };
+    const FEATURE_LABELS: Record<string, string> = { black_market: 'Black Market', hedge_fund: 'Hedge Fund' };
     const sorted = Object.entries(FEATURE_RANK_INDEX).sort((a, b) => a[1] - b[1]);
     for (const [feature, rankIdx] of sorted) {
       if (rankIdx > di) {

@@ -9,6 +9,8 @@ import { RankSystem } from './systems/RankSystem.ts';
 import { BlackMarketSystem } from './systems/BlackMarketSystem.ts';
 import { InvestorSystem } from './systems/InvestorSystem.ts';
 import { BlackMarketPanel } from './ui/BlackMarketPanel.ts';
+import { HedgeFundSystem } from './systems/HedgeFundSystem.ts';
+import { HedgeFundPanel } from './ui/HedgeFundPanel.ts';
 import { Renderer } from './ui/render.ts';
 import { TutorialSystem } from './systems/TutorialSystem.ts';
 import { TutorialOverlay } from './ui/TutorialOverlay.ts';
@@ -26,14 +28,18 @@ const saveSystem      = new SaveSystem();
 const rankSystem      = new RankSystem();
 const bmSystem        = new BlackMarketSystem();
 const investorSystem  = new InvestorSystem();
+const hfSystem        = new HedgeFundSystem();
 const tutorialSystem  = new TutorialSystem();
 const tutorialHasSave = tutorialSystem.load();
 
 // ── Idle system ───────────────────────────────────────────────────────────────
 // Created before renderer so save restoration can set day state before first render.
 
-let lastBmDay = -1;
+let lastBmDay  = -1;
+let lastHfDay  = -1;
+let prevHfNetWorth = -1;
 
+// hfSystem declared before IdleSystem so it can be passed in
 const idleSystem = new IdleSystem(
   market, player, eventSystem, upgradeSystem, saveSystem,
   { // callbacks
@@ -56,9 +62,20 @@ const idleSystem = new IdleSystem(
         eventSystem.addEntry('🕵️ Black Market unlocked. Check your messages.', 'good');
       }
 
+      // HF unlock check
+      if (!hfSystem.unlocked && rankSystem.isFeatureUnlocked('hedge_fund', nw)) {
+        hfSystem.unlock();
+        renderer.showHedgeFundUnlock();
+        eventSystem.addEntry('💼 Hedge Fund unlocked. Check your messages.', 'good');
+      }
+
       // BM per-second tick
       bmSystem.tickSecond();
       bmPanel.updateDisplay();
+
+      // HF per-second tick
+      hfSystem.tickSecond();
+      hfPanel.updateDisplay();
 
       // BM day-boundary tick
       if (day !== lastBmDay) {
@@ -69,6 +86,32 @@ const idleSystem = new IdleSystem(
           renderer.showToast(consequence.message, 'error');
           renderer.showEventPopup({ id: Date.now(), timestamp: Date.now(), message: consequence.message, severity: 'bad' });
           screenFlash('bad');
+        }
+      }
+
+      // HF day-boundary tick
+      if (day !== lastHfDay) {
+        lastHfDay = day;
+        const dailyReturnPct = prevHfNetWorth > 0
+          ? ((nw - prevHfNetWorth) / prevHfNetWorth) * 100
+          : 0;
+        prevHfNetWorth = nw;
+        const { consequences, managementFee, performanceFee } = hfSystem.dayTick(dailyReturnPct);
+        if (managementFee > 0) {
+          player.cash += managementFee;
+        }
+        if (performanceFee > 0) {
+          player.cash += performanceFee;
+          renderer.showToast(`💼 Performance fee: +$${performanceFee.toLocaleString()}!`, 'success');
+        }
+        for (const c of consequences) {
+          if (c.type === 'withdrawal') {
+            renderer.showToast(c.message, 'error');
+            renderer.showEventPopup({ id: Date.now(), timestamp: Date.now(), message: c.message, severity: 'bad' });
+            screenFlash('bad');
+          } else if (c.type === 'incoming_call' && c.investorId) {
+            hfPanel.notifyIncomingCall(c.investorId);
+          }
         }
       }
 
@@ -116,13 +159,14 @@ const idleSystem = new IdleSystem(
   rankSystem,
   bmSystem,
   investorSystem,
+  hfSystem,
 );
 
 // ── Restore save ──────────────────────────────────────────────────────────────
 
 const savedData = saveSystem.load();
 if (savedData) {
-  saveSystem.applyLoad(savedData, player, market, upgradeSystem, idleSystem, newsSystem, rankSystem, bmSystem, investorSystem);
+  saveSystem.applyLoad(savedData, player, market, upgradeSystem, idleSystem, newsSystem, rankSystem, bmSystem, investorSystem, hfSystem);
   market.checkUnlocks(player.getNetWorth(market));
   if (upgradeSystem.hasPurchased('volatility_damper')) market.applyVolatilityDamper();
   if (upgradeSystem.hasPurchased('time_warp')) idleSystem.applyTimeWarp();
@@ -248,7 +292,7 @@ const renderer = new Renderer({
 
     renderer.showToast(`⭐ PRESTIGE #${upgradeSystem.prestigeCount}! ${upgradeSystem.getEarningsMultiplier()}× multiplier active!`, 'success');
     eventSystem.addEntry(`⭐ PRESTIGE! The cycle begins anew with ×${upgradeSystem.getEarningsMultiplier()} multiplier.`, 'good');
-    saveSystem.save(player, market, upgradeSystem, idleSystem, newsSystem, rankSystem, bmSystem);
+    saveSystem.save(player, market, upgradeSystem, idleSystem, newsSystem, rankSystem, bmSystem, investorSystem, hfSystem);
   },
 
   onDarkModeToggle() {
@@ -309,6 +353,18 @@ bmPanel.mount(document.getElementById('bm-panel-mount')!, {
 });
 renderer.setBmPanel(bmPanel);
 if (bmSystem.unlocked) renderer.revealBlackMarketTab();
+
+// ── Hedge fund panel ──────────────────────────────────────────────────────────
+
+const hfPanel = new HedgeFundPanel(hfSystem);
+hfPanel.mount(document.getElementById('hf-panel-mount')!, {
+  showToast: (msg, type) => renderer.showToast(msg, type as 'success' | 'error' | 'info' | 'chaos'),
+  addCash:   (amt) => { player.cash += amt; },
+  deductCash:(amt) => { player.cash = Math.max(0, player.cash - amt); },
+  openHfTab: () => renderer.switchTab('hf'),
+});
+renderer.setHfPanel(hfPanel);
+if (hfSystem.unlocked) renderer.revealHedgeFundTab();
 
 // ── Tutorial ──────────────────────────────────────────────────────────────────
 // Returning players who existed before tutorial feature → skip automatically.

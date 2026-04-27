@@ -6,6 +6,7 @@ import type { NewsSystem, NewsSaveState } from '../core/NewsSystem.ts';
 import type { RankSystem, RankSaveState } from './RankSystem.ts';
 import type { BlackMarketSystem, BmSaveState } from './BlackMarketSystem.ts';
 import type { InvestorSystem, InvestorSaveData } from './InvestorSystem.ts';
+import type { HedgeFundSystem, HfSaveState } from './HedgeFundSystem.ts';
 
 interface SaveData {
   version: number;
@@ -23,6 +24,7 @@ interface SaveData {
   rank?: RankSaveState;
   blackMarket?: BmSaveState;
   investors?: InvestorSaveData;
+  hedgeFund?: HfSaveState;
 }
 
 const SAVE_KEY = 'idlestonks_v2';
@@ -36,11 +38,12 @@ export class SaveSystem {
     player: Player, market: Market, upgradeSystem: UpgradeSystem,
     idleSystem?: IdleSystem, newsSystem?: NewsSystem, rankSystem?: RankSystem,
     blackMarketSystem?: BlackMarketSystem, investorSystem?: InvestorSystem,
+    hedgeFundSystem?: HedgeFundSystem,
   ): void {
     this.ticksSinceLastSave++;
     if (this.ticksSinceLastSave >= this.saveEveryTicks) {
       this.ticksSinceLastSave = 0;
-      this.save(player, market, upgradeSystem, idleSystem, newsSystem, rankSystem, blackMarketSystem, investorSystem);
+      this.save(player, market, upgradeSystem, idleSystem, newsSystem, rankSystem, blackMarketSystem, investorSystem, hedgeFundSystem);
     }
   }
 
@@ -48,6 +51,7 @@ export class SaveSystem {
     player: Player, market: Market, upgradeSystem: UpgradeSystem,
     idleSystem?: IdleSystem, newsSystem?: NewsSystem, rankSystem?: RankSystem,
     blackMarketSystem?: BlackMarketSystem, investorSystem?: InvestorSystem,
+    hedgeFundSystem?: HedgeFundSystem,
   ): void {
     const prices: Record<string, number> = {};
     const owned: Record<string, number> = {};
@@ -73,6 +77,7 @@ export class SaveSystem {
       rank: rankSystem?.saveState(),
       blackMarket: blackMarketSystem?.saveState(),
       investors: investorSystem?.saveState(),
+      hedgeFund: hedgeFundSystem?.saveState(),
     };
 
     try {
@@ -99,6 +104,7 @@ export class SaveSystem {
     upgradeSystem: UpgradeSystem, idleSystem?: IdleSystem,
     newsSystem?: NewsSystem, rankSystem?: RankSystem,
     blackMarketSystem?: BlackMarketSystem, investorSystem?: InvestorSystem,
+    hedgeFundSystem?: HedgeFundSystem,
   ): void {
     player.cash = data.cash ?? 1000;
     player.totalEarned = data.totalEarned ?? 0;
@@ -112,6 +118,7 @@ export class SaveSystem {
     if (rankSystem && data.rank) rankSystem.loadState(data.rank);
     if (blackMarketSystem && data.blackMarket) blackMarketSystem.loadState(data.blackMarket);
     if (investorSystem && data.investors) investorSystem.loadState(data.investors);
+    if (hedgeFundSystem && data.hedgeFund) hedgeFundSystem.loadState(data.hedgeFund);
   }
 
   clearSave(): void {

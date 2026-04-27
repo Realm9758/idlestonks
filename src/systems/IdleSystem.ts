@@ -7,6 +7,7 @@ import type { SaveSystem } from './SaveSystem.ts';
 import type { RankSystem } from './RankSystem.ts';
 import type { BlackMarketSystem } from './BlackMarketSystem.ts';
 import type { InvestorSystem } from './InvestorSystem.ts';
+import type { HedgeFundSystem } from './HedgeFundSystem.ts';
 
 export interface IdleCallbacks {
   onTick: (tick: number, day: number, secondsInDay: number, secondsPerDay: number) => void;
@@ -36,6 +37,7 @@ export class IdleSystem {
     private readonly rankSystem?: RankSystem,
     private readonly blackMarketSystem?: BlackMarketSystem,
     private readonly investorSystem?: InvestorSystem,
+    private readonly hedgeFundSystem?: HedgeFundSystem,
   ) {}
 
   start(): void {
@@ -106,6 +108,7 @@ export class IdleSystem {
     this.saveSystem.tick(
       this.player, this.market, this.upgradeSystem, this,
       this.newsSystem, this.rankSystem, this.blackMarketSystem, this.investorSystem,
+      this.hedgeFundSystem,
     );
 
     this.callbacks.onTick(this.tickCount, this.dayCount, this.secondsInDay, this.secondsPerDay);

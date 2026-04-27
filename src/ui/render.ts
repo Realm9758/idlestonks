@@ -6,6 +6,7 @@ import type { UpgradeSystem } from '../systems/UpgradeSystem.ts';
 import type { RankSystem, Rank } from '../systems/RankSystem.ts';
 import type { InvestorSystem } from '../systems/InvestorSystem.ts';
 import type { BlackMarketPanel } from './BlackMarketPanel.ts';
+import type { HedgeFundPanel } from './HedgeFundPanel.ts';
 import type { Asset } from '../core/Asset.ts';
 import { INVESTOR_TIERS } from '../systems/InvestorSystem.ts';
 import { LEVELED_UPGRADES } from '../systems/UpgradeSystem.ts';
@@ -81,7 +82,8 @@ export class Renderer {
 
   // Black market
   private bmPanel: BlackMarketPanel | null = null;
-  private currentTab: 'main' | 'upgrades' | 'bm' = 'main';
+  private hfPanel: HedgeFundPanel | null = null;
+  private currentTab: 'main' | 'upgrades' | 'bm' | 'hf' = 'main';
 
   // Investor system
   private storedInvestorSystem: InvestorSystem | null = null;
@@ -163,6 +165,7 @@ export class Renderer {
     <button class="tab-btn tab-active" data-tab="main">📊 Market</button>
     <button class="tab-btn" data-tab="upgrades">📦 Upgrades</button>
     <button class="tab-btn tab-locked" data-tab="bm" id="tab-bm">🔒 Classified</button>
+    <button class="tab-btn tab-locked hidden" data-tab="hf" id="tab-hf">💼 Hedge Fund</button>
   </div>
 
   <div id="ticker-bar">
@@ -312,6 +315,9 @@ export class Renderer {
   <!-- Black market mount point -->
   <div id="bm-panel-mount" class="hidden"></div>
 
+  <!-- Hedge fund mount point -->
+  <div id="hf-panel-mount" class="hidden"></div>
+
   <!-- Insight panel background -->
   <div id="insight-bg" class="insight-bg"></div>
 
@@ -391,7 +397,7 @@ export class Renderer {
     document.getElementById('tab-bar')!.addEventListener('click', (e) => {
       const btn = (e.target as HTMLElement).closest<HTMLElement>('[data-tab]');
       if (!btn || btn.classList.contains('tab-locked')) return;
-      this.switchTab(btn.dataset.tab as 'main' | 'upgrades' | 'bm');
+      this.switchTab(btn.dataset.tab as 'main' | 'upgrades' | 'bm' | 'hf');
     });
     document.getElementById('btn-dark')!.addEventListener('click', () => this.callbacks.onDarkModeToggle());
     document.getElementById('btn-skip-day')!.addEventListener('click', () => this.callbacks.onSkipDay());
@@ -1565,11 +1571,12 @@ export class Renderer {
     this.bmPanel = panel;
   }
 
-  switchTab(tab: 'main' | 'upgrades' | 'bm'): void {
+  switchTab(tab: 'main' | 'upgrades' | 'bm' | 'hf'): void {
     this.currentTab = tab;
     document.getElementById('main-grid')!.classList.toggle('hidden', tab !== 'main');
     document.getElementById('upgrades-tab-panel')!.classList.toggle('hidden', tab !== 'upgrades');
     document.getElementById('bm-panel-mount')!.classList.toggle('hidden', tab !== 'bm');
+    document.getElementById('hf-panel-mount')!.classList.toggle('hidden', tab !== 'hf');
     document.querySelectorAll<HTMLElement>('#tab-bar [data-tab]').forEach(btn => {
       btn.classList.toggle('tab-active', btn.dataset.tab === tab);
       btn.classList.remove('tab-active');
@@ -1577,6 +1584,9 @@ export class Renderer {
     });
     if (tab === 'bm' && this.bmPanel && !this.bmPanel.tutorialStarted) {
       this.bmPanel.playTutorial();
+    }
+    if (tab === 'hf' && this.hfPanel && !this.hfPanel.tutorialStarted) {
+      this.hfPanel.playTutorial();
     }
   }
 
@@ -1589,6 +1599,21 @@ export class Renderer {
   revealBlackMarketTab(): void {
     const btn = document.getElementById('tab-bm');
     if (btn) { btn.textContent = '🕵️ Black Market'; btn.classList.remove('tab-locked'); }
+  }
+
+  setHfPanel(panel: HedgeFundPanel): void {
+    this.hfPanel = panel;
+  }
+
+  showHedgeFundUnlock(): void {
+    const btn = document.getElementById('tab-hf');
+    if (btn) { btn.classList.remove('tab-locked', 'hidden'); }
+    this.hfPanel?.triggerUnlockNotif();
+  }
+
+  revealHedgeFundTab(): void {
+    const btn = document.getElementById('tab-hf');
+    if (btn) { btn.classList.remove('tab-locked', 'hidden'); }
   }
 
   // ── Dark mode ─────────────────────────────────────────────────────────────
