@@ -101,13 +101,14 @@ const idleSystem = new IdleSystem(
         lastBmDay = day;
         const consequence = bmSystem.dayTick();
         if (consequence) {
-          if (consequence.type === 'fine') {
+          if (consequence.type === 'fine' || consequence.type === 'case_lost') {
             soundSystem.play('loss');
             player.cash = Math.max(0, player.cash - (consequence.fineAmount ?? 0));
           }
-          renderer.showToast(consequence.message, 'error');
-          renderer.showEventPopup({ id: Date.now(), timestamp: Date.now(), message: consequence.message, severity: 'bad' });
-          screenFlash('bad');
+          const isWin = consequence.type === 'case_won';
+          renderer.showToast(consequence.message, isWin ? 'success' : 'error');
+          renderer.showEventPopup({ id: Date.now(), timestamp: Date.now(), message: consequence.message, severity: isWin ? 'good' : 'bad' });
+          if (!isWin) screenFlash('bad');
         }
       }
 

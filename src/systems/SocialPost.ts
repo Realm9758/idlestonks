@@ -1,6 +1,13 @@
 export type SocialPlatform = 'ChirpNet' | 'MemeBoard' | 'FinTok';
 export type SocialPostType = 'hype' | 'fake_leak' | 'meme' | 'influencer_promo';
 export type PostOutcome = 'flop' | 'normal' | 'strong' | 'viral';
+export type CommentType = 'positive' | 'neutral' | 'negative';
+
+export interface SocialComment {
+  id: string;
+  text: string;
+  type: CommentType;
+}
 
 export interface SocialPost {
   id: string;
@@ -21,6 +28,8 @@ export interface SocialPost {
   age: number;
   settled: boolean;
   viralNotified: boolean;
+  liveComments: SocialComment[];
+  commentTimer: number; // seconds until next comment appears
 }
 
 export interface PlatformMeta {
@@ -123,6 +132,87 @@ export const POST_TEXTS: Record<SocialPlatform, Record<SocialPostType, string[]>
   },
 };
 
+export const COMMENT_POOL: Record<CommentType, string[]> = {
+  positive: [
+    "this is going to the moon 🚀",
+    "just bought more",
+    "we're early 👀",
+    "WAGMI 🙌",
+    "loaded up, not looking back 💎",
+    "this is the next 100x fr",
+    "chart looks insane rn 📈",
+    "sending this to my whole group chat",
+    "lfg 🔥🔥🔥",
+    "in since the bottom, feeling blessed",
+    "guys I'm not joking, buy now",
+    "this team is legit, did my research",
+    "just told my brother about this 👀",
+    "biggest play of the year no cap",
+    "honestly undervalued asf rn",
+    "my bags are packed 🌙",
+    "price discovery mode ACTIVATED",
+    "early movers always win 💰",
+    "THIS. IS. THE. ONE.",
+    "portfolio finally making sense 📊",
+  ],
+  neutral: [
+    "interesting",
+    "watching this",
+    "hmm 🤔",
+    "keeping an eye on this one",
+    "not sure yet",
+    "might buy a small bag",
+    "what's the tokenomics?",
+    "first time hearing about this",
+    "researching now",
+    "can someone explain the utility?",
+    "anyone done DD on this?",
+    "seems like there's momentum",
+    "what's the team background?",
+    "checking the chart",
+    "gonna wait for a dip",
+  ],
+  negative: [
+    "this feels like a scam 🚨",
+    "why is this pumping so fast?",
+    "something is off here",
+    "SEC gonna love this 💀",
+    "classic pump and dump 🙄",
+    "who's actually behind this project?",
+    "suspicious activity detected",
+    "bro this is so fake lmao",
+    "ya'll getting rekt and don't even know it",
+    "did anyone actually audit the contract?",
+    "zero fundamentals, pure hype",
+    "I've seen this pattern before... 👀",
+    "no whitepaper, no team, no product... sus",
+    "these comments look astroturfed ngl",
+    "OP is definitely the dev 🤡",
+    "anonymous team is a red flag 🚩",
+    "why are there no critical comments?",
+    "market manipulation is illegal btw",
+  ],
+};
+
+export function pickComment(heat: number): SocialComment {
+  // Sentiment weights shift toward negative as heat rises
+  let posW: number, neuW: number, negW: number;
+  if (heat < 30)      { posW = 0.70; neuW = 0.20; negW = 0.10; }
+  else if (heat < 60) { posW = 0.40; neuW = 0.30; negW = 0.30; }
+  else if (heat < 85) { posW = 0.20; neuW = 0.25; negW = 0.55; }
+  else                { posW = 0.05; neuW = 0.10; negW = 0.85; }
+
+  const roll = Math.random();
+  let type: CommentType;
+  if (roll < posW) type = 'positive';
+  else if (roll < posW + neuW) type = 'neutral';
+  else type = 'negative';
+
+  const pool = COMMENT_POOL[type];
+  const text = pool[Math.floor(Math.random() * pool.length)];
+  return { id: `c_${Date.now()}_${Math.floor(Math.random() * 9999)}`, text, type };
+}
+
 export function getPostImpactPreview(
   platform: SocialPlatform,
   postType: SocialPostType,
@@ -130,8 +220,8 @@ export function getPostImpactPreview(
   const pm  = PLATFORM_META[platform];
   const ptm = POST_TYPE_META[postType];
   return {
-    hype:       ptm.baseHype,
-    risk:       ptm.baseRisk,
+    hype:        ptm.baseHype,
+    risk:        ptm.baseRisk,
     viralChance: Math.round((0.08 + pm.viralBonus + ptm.viralBonus) * 100),
   };
 }

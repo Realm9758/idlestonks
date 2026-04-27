@@ -1,4 +1,4 @@
-import type { SocialPost } from '../systems/SocialPost.ts';
+import type { SocialPost, SocialComment } from '../systems/SocialPost.ts';
 import { PLATFORM_META, POST_TYPE_META } from '../systems/SocialPost.ts';
 
 export interface FeedCallbacks {
@@ -8,7 +8,9 @@ export interface FeedCallbacks {
 export class SocialFeed {
   private container: HTMLElement | null = null;
   private cb:        FeedCallbacks;
-  private rendered = new Set<string>();
+  private rendered   = new Set<string>();
+  // Track which comment IDs have been rendered per post
+  private renderedComments = new Map<string, Set<string>>();
 
   constructor(cb: FeedCallbacks) {
     this.cb = cb;
@@ -32,6 +34,7 @@ export class SocialFeed {
     for (const post of posts) {
       if (!this.rendered.has(post.id)) {
         this.rendered.add(post.id);
+        this.renderedComments.set(post.id, new Set());
         this._addCard(post);
         if (post.outcome === 'viral' && !post.viralNotified) {
           post.viralNotified = true;
@@ -39,6 +42,7 @@ export class SocialFeed {
         }
       }
       this._refreshCard(post);
+      this._syncComments(post);
     }
   }
 
@@ -64,9 +68,10 @@ export class SocialFeed {
       </div>
       <div class="sm-post-impact">
         <span class="sm-impact-hype-tag" id="hype-tag-${post.id}">+0.0 hype</span>
-        <span class="sm-impact-risk-tag">+${post.riskAdded} risk</span>
+        <span class="sm-impact-risk-tag">+${post.riskAdded} heat</span>
         ${post.crowdAmount > 0 ? `<span class="sm-impact-crowd-tag" id="crowd-tag-${post.id}">…</span>` : ''}
-      </div>`;
+      </div>
+      <div class="sm-comment-list" id="comments-list-${post.id}"></div>`;
 
     c.prepend(card);
   }
@@ -97,6 +102,33 @@ export class SocialFeed {
       if (card && post.outcome === 'viral') {
         card.classList.add('sm-post-viral-glow');
       }
+    }
+  }
+
+  private _syncComments(post: SocialPost): void {
+    const list = document.getElementById(`comments-list-${post.id}`);
+    if (!list) return;
+
+    const rendered = this.renderedComments.get(post.id);
+    if (!rendered) return;
+
+    for (const comment of post.liveComments) {
+      if (rendered.has(comment.id)) continue;
+      rendered.add(comment.id);
+      this._addComment(list, comment);
+    }
+  }
+
+  private _addComment(list: HTMLElement, comment: SocialComment): void {
+    const bubble = document.createElement('div');
+    bubble.className = `sm-comment-bubble sm-comment-${comment.type}`;
+    bubble.textContent = comment.text;
+    list.appendChild(bubble);
+
+    // Limit visible comments to last 5
+    const all = list.querySelectorAll('.sm-comment-bubble');
+    if (all.length > 5) {
+      all[0].remove();
     }
   }
 
