@@ -103,11 +103,13 @@ export class TutorialOverlay {
     const showNext  = !!(step.nextLabel && (step.actionRequired ? satisfied : true));
     const pct       = ((this.sys.stepIndex + 1) / this.sys.totalSteps) * 100;
 
-    const waitHtml = (step.actionRequired && !satisfied)
-      ? `<p class="tut-action-hint">
-           <span class="tut-action-dot"></span>
-           ${step.actionRequired === 'buy' ? 'click Buy above to continue' : 'click Sell above to continue'}
-         </p>`
+    const waitHtml = step.actionRequired
+      ? satisfied
+        ? `<p class="tut-action-done"><span class="tut-check">✓</span> nice — moving on...</p>`
+        : `<p class="tut-action-hint">
+             <span class="tut-action-dot"></span>
+             ${step.actionRequired === 'buy' ? 'click Buy above to continue' : 'click Sell above to continue'}
+           </p>`
       : '';
 
     const nextHtml = showNext

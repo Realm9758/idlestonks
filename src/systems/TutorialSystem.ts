@@ -108,10 +108,10 @@ export class TutorialSystem {
     if (this._done) return;
     const step = this.currentStep;
     if (!step?.actionRequired || step.actionRequired !== type) return;
-    if (this._pendingAction !== type) {
-      this._pendingAction = type;
-      this._onChange?.();
-    }
+    if (this._pendingAction === type) return; // already queued
+    this._pendingAction = type;
+    this._onChange?.(); // show "✓ perfect" state briefly
+    setTimeout(() => this.advance(), 900);
   }
 
   skip(): void {
