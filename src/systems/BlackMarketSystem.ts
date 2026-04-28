@@ -87,6 +87,72 @@ export const LAWYER_UPGRADES: LawyerUpgrade[] = [
   { level: 5, name: 'The Fixer',         cost: 600_000, description: '25% chance to ignore any penalty',  investigationReduction: 0,    fineReduction: 0,    winChanceBonus: 0,    caseDelayBonus: 0,  ignoreChance: 0.25 },
 ];
 
+// ── News Manipulation ──────────────────────────────────────────────────────
+
+export interface PendingNewsManip {
+  id: string;
+  typeId: 'positive_hype' | 'fear_crash' | 'fake_leak';
+  headline: string;
+  resolveDay: number;
+  successChance: number;
+  hypeBoostOnSuccess: number;
+  heatOnFail: number;
+  trustDrainOnFail: number;
+}
+
+export interface NewsManipResult {
+  typeId: string;
+  headline: string;
+  success: boolean;
+}
+
+export const NEWS_MANIP_TYPES = [
+  {
+    id: 'positive_hype' as const,
+    label: 'Positive Hype News',
+    emoji: '📈',
+    headline: 'Major partnership rumored for MoonCoin',
+    description: 'Leak a fabricated partnership rumor to drive investor hype and pump the coin.',
+    cost: 5_000,
+    successChance: 0.70,
+    heatOnPublish: 8,
+    heatOnFail: 15,
+    hypeBoostOnSuccess: 0.30,
+    trustDrainOnFail: 0,
+    tags: ['MEDIUM RISK', '$5,000', '70% CHANCE'],
+  },
+  {
+    id: 'fear_crash' as const,
+    label: 'Fear / Negative News',
+    emoji: '⚠️',
+    headline: 'Regulators investigating top competitor',
+    description: 'Spread regulatory fear about a rival. Rattles the market and redirects money to your coin.',
+    cost: 8_000,
+    successChance: 0.60,
+    heatOnPublish: 12,
+    heatOnFail: 22,
+    hypeBoostOnSuccess: 0.20,
+    trustDrainOnFail: 0.08,
+    tags: ['HIGH RISK', '$8,000', '60% CHANCE'],
+  },
+  {
+    id: 'fake_leak' as const,
+    label: 'Fake Insider Leak',
+    emoji: '🎭',
+    headline: 'Insider source: MoonCoin about to 10x',
+    description: 'Plant fabricated insider information. Explosive upside — but if traced, investigation follows.',
+    cost: 12_000,
+    successChance: 0.45,
+    heatOnPublish: 18,
+    heatOnFail: 32,
+    hypeBoostOnSuccess: 0.55,
+    trustDrainOnFail: 0.15,
+    tags: ['EXTREME RISK', '$12,000', '45% CHANCE'],
+  },
+] as const;
+
+export type NewsManipTypeId = 'positive_hype' | 'fear_crash' | 'fake_leak';
+
 export interface BmSaveState {
   unlocked: boolean;
   tutorialSeen: boolean;
@@ -102,6 +168,10 @@ export interface BmSaveState {
   lawyerLevel?: number;
   dayCount?: number;
   rivals?: { id: string; poolAmount: number; active: boolean; cooldownDays: number; totalRugs: number }[];
+  newsManipUnlocked?: boolean;
+  newsManipsToday?: number;
+  newsManipCooldownSecs?: number;
+  pendingNewsManips?: PendingNewsManip[];
 }
 
 const CUSTOMER_TEMPLATES: Omit<BmCustomer, 'invested' | 'suspicious' | 'callCount'>[] = [
@@ -159,6 +229,15 @@ export class BlackMarketSystem {
 
   // Feature I: rivals
   rivals: RivalOperator[];
+
+  // News Manipulation
+  newsManipUnlocked      = false;
+  newsManipCooldownSecs  = 0;
+  newsManipsToday        = 0;
+  readonly MAX_NEWS_MANIPS_PER_DAY = 3;
+  readonly NEWS_MANIP_COOLDOWN     = 45;
+  pendingNewsManips: PendingNewsManip[]  = [];
+  newsManipResults:  NewsManipResult[]   = [];
 
   private _customers: BmCustomer[];
   private _activeCallId: string | null = null;
@@ -429,6 +508,45 @@ export class BlackMarketSystem {
     return true;
   }
 
+  canManipNews(): boolean {
+    return !this.isLocked
+      && this.newsManipUnlocked
+      && this.newsManipCooldownSecs <= 0
+      && this.newsManipsToday < this.MAX_NEWS_MANIPS_PER_DAY;
+  }
+
+  publishNewsManip(
+    typeId: NewsManipTypeId,
+    deductCash: (amount: number) => boolean,
+  ): { success: boolean; message: string } {
+    const type = NEWS_MANIP_TYPES.find(t => t.id === typeId);
+    if (!type || !this.canManipNews()) return { success: false, message: 'Cannot publish right now.' };
+    if (!deductCash(type.cost)) return { success: false, message: 'Not enough cash.' };
+
+    this.newsManipCooldownSecs = this.NEWS_MANIP_COOLDOWN;
+    this.newsManipsToday++;
+    this.heat = Math.min(100, this.heat + type.heatOnPublish);
+
+    const pending: PendingNewsManip = {
+      id:                 `nm_${Date.now()}`,
+      typeId,
+      headline:           type.headline,
+      resolveDay:         this.dayCount + 1,
+      successChance:      type.successChance,
+      hypeBoostOnSuccess: type.hypeBoostOnSuccess,
+      heatOnFail:         type.heatOnFail,
+      trustDrainOnFail:   type.trustDrainOnFail,
+    };
+    this.pendingNewsManips.push(pending);
+    return { success: true, message: `📰 Published: "${type.headline}"` };
+  }
+
+  consumeNewsManipResults(): NewsManipResult[] {
+    const results = [...this.newsManipResults];
+    this.newsManipResults = [];
+    return results;
+  }
+
   getRivals(): readonly RivalOperator[] { return this.rivals; }
 
   consumeAlerts(): BmAlert[] {
@@ -438,8 +556,9 @@ export class BlackMarketSystem {
   }
 
   tickSecond(): void {
-    if (this.callCooldownSecs > 0) this.callCooldownSecs--;
-    if (this.postCooldownSecs  > 0) this.postCooldownSecs--;
+    if (this.callCooldownSecs      > 0) this.callCooldownSecs--;
+    if (this.postCooldownSecs      > 0) this.postCooldownSecs--;
+    if (this.newsManipCooldownSecs > 0) this.newsManipCooldownSecs--;
 
     if (this.stock.price > 0.001) {
       const noise = (Math.random() - 0.48) * 0.025 * (1 + this.stock.hype);
@@ -581,9 +700,38 @@ export class BlackMarketSystem {
 
   dayTick(): BmConsequence | null {
     this.dayCount++;
-    this.callsToday = 0;
-    this.postsToday = 0;
-    this.dailyRugProfit = 0;
+    this.callsToday      = 0;
+    this.postsToday      = 0;
+    this.newsManipsToday = 0;
+    this.dailyRugProfit  = 0;
+
+    // Resolve pending news manipulations
+    const stillPending: PendingNewsManip[] = [];
+    for (const manip of this.pendingNewsManips) {
+      if (manip.resolveDay <= this.dayCount) {
+        const success = Math.random() < manip.successChance;
+        if (success) {
+          this.stock.hype  = Math.min(1, this.stock.hype + manip.hypeBoostOnSuccess);
+          this.stock.price = Math.max(0.001, this.stock.price * (1 + manip.hypeBoostOnSuccess * 0.6));
+        } else {
+          this.heat = Math.min(100, this.heat + manip.heatOnFail);
+          if (manip.trustDrainOnFail > 0) {
+            this.reputation = Math.max(0.3, this.reputation - manip.trustDrainOnFail);
+          }
+          if (manip.typeId === 'fake_leak') {
+            this.pendingAlerts.push({
+              id:      `alert_${Date.now()}`,
+              type:    'investigation_warning',
+              message: '🕵️ Fake leak traced back — authorities are watching.',
+            });
+          }
+        }
+        this.newsManipResults.push({ typeId: manip.typeId, headline: manip.headline, success });
+      } else {
+        stillPending.push(manip);
+      }
+    }
+    this.pendingNewsManips = stillPending;
 
     if (this.lockDaysRemaining > 0) {
       this.lockDaysRemaining--;
@@ -707,6 +855,10 @@ export class BlackMarketSystem {
         id: r.id, poolAmount: r.poolAmount, active: r.active,
         cooldownDays: r.cooldownDays, totalRugs: r.totalRugs,
       })),
+      newsManipUnlocked:     this.newsManipUnlocked,
+      newsManipsToday:       this.newsManipsToday,
+      newsManipCooldownSecs: this.newsManipCooldownSecs,
+      pendingNewsManips:     [...this.pendingNewsManips],
     };
   }
 
@@ -736,5 +888,9 @@ export class BlackMarketSystem {
         if (r) Object.assign(r, { poolAmount: sr.poolAmount, active: sr.active, cooldownDays: sr.cooldownDays, totalRugs: sr.totalRugs });
       }
     }
+    this.newsManipUnlocked     = s.newsManipUnlocked     ?? false;
+    this.newsManipsToday       = s.newsManipsToday       ?? 0;
+    this.newsManipCooldownSecs = s.newsManipCooldownSecs ?? 0;
+    this.pendingNewsManips     = s.pendingNewsManips      ? [...s.pendingNewsManips] : [];
   }
 }

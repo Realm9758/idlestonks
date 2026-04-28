@@ -96,6 +96,15 @@ const idleSystem = new IdleSystem(
         eventSystem.addEntry('🕵️ Black Market unlocked. Check your messages.', 'good');
       }
 
+      // News Manipulation unlock (requires BM active + $200k net worth)
+      if (bmSystem.unlocked && !bmSystem.newsManipUnlocked && nw >= 200_000) {
+        bmSystem.newsManipUnlocked = true;
+        soundSystem.play('unlock');
+        renderer.showToast('📰 News Manipulation unlocked! Control the narrative in the Black Market.', 'success');
+        eventSystem.addEntry('📰 News Manipulation unlocked — shape the market.', 'good');
+        bmPanel.addChatMessage('new feature unlocked: news manipulation 📰 check the News tab');
+      }
+
       // HF unlock check
       if (!hfSystem.unlocked && rankSystem.isFeatureUnlocked('hedge_fund', nw)) {
         hfSystem.unlock();

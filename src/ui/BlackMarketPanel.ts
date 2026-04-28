@@ -1,4 +1,5 @@
-import type { BlackMarketSystem, BmCustomer, CallMods } from '../systems/BlackMarketSystem.ts';
+import type { BlackMarketSystem, BmCustomer, CallMods, NewsManipTypeId } from '../systems/BlackMarketSystem.ts';
+import { NEWS_MANIP_TYPES } from '../systems/BlackMarketSystem.ts';
 import { screenShake } from './animations.ts';
 import { screenFlash } from './animations.ts';
 import { SocialMediaPanel } from './SocialMediaPanel.ts';
@@ -245,6 +246,7 @@ export class BlackMarketPanel {
   <div class="bm-tab-bar">
     <button class="bm-nav-tab bm-nav-active" data-bm-tab="calls">📞 Calls</button>
     <button class="bm-nav-tab" data-bm-tab="social">📱 Social Media</button>
+    <button class="bm-nav-tab" data-bm-tab="news">📰 News</button>
   </div>
 
   <div class="bm-tab-pane" id="bm-pane-calls">
@@ -373,10 +375,26 @@ export class BlackMarketPanel {
     <div id="sm-panel-mount" style="flex:1;min-height:0;display:flex;flex-direction:column;overflow:hidden"></div>
   </div>
 
+  <div class="bm-tab-pane hidden" id="bm-pane-news">
+    <div id="nm-panel" class="nm-panel"></div>
+  </div>
+
 </div>`;
   }
 
   private _appendFixed(): void {
+    // Breaking news banner
+    const banner = document.createElement('div');
+    banner.id = 'bm-breaking-banner';
+    banner.className = 'bm-breaking-banner hidden';
+    banner.innerHTML = `
+      <div class="bbn-inner">
+        <span class="bbn-live">📺 BREAKING</span>
+        <span id="bbn-headline" class="bbn-headline"></span>
+        <span id="bbn-result" class="bbn-result"></span>
+      </div>`;
+    document.body.appendChild(banner);
+
     // Unlock notification
     const notif = document.createElement('div');
     notif.id = 'bm-unlock-notif';
@@ -448,6 +466,8 @@ export class BlackMarketPanel {
         btn.classList.add('bm-nav-active');
         document.getElementById('bm-pane-calls')?.classList.toggle('hidden', tab !== 'calls');
         document.getElementById('bm-pane-social')?.classList.toggle('hidden', tab !== 'social');
+        document.getElementById('bm-pane-news')?.classList.toggle('hidden', tab !== 'news');
+        if (tab === 'news') this._renderNewsPanel();
       });
     });
 
@@ -734,6 +754,130 @@ export class BlackMarketPanel {
     }
   }
 
+  // ── News Manipulation ─────────────────────────────────────────────────────
+
+  private _renderNewsPanel(): void {
+    const container = document.getElementById('nm-panel');
+    if (!container) return;
+
+    if (!this.sys.newsManipUnlocked) {
+      container.innerHTML = `
+        <div class="nm-locked">
+          <div class="nm-lock-icon">🔒</div>
+          <div class="nm-lock-title">NEWS MANIPULATION</div>
+          <div class="nm-lock-sub">Requires $200,000 net worth while in the Black Market</div>
+          <div class="nm-lock-hint">Control the narrative. Shape the market.</div>
+        </div>`;
+      return;
+    }
+
+    const s = this.sys;
+    const canPublish = s.canManipNews();
+    const cooldown   = s.newsManipCooldownSecs;
+
+    const pendingHtml = s.pendingNewsManips.length > 0
+      ? `<div class="nm-pending-section">
+          <div class="nm-section-lbl">IN CIRCULATION</div>
+          ${s.pendingNewsManips.map(m => `
+            <div class="nm-pending-item">
+              <span class="nm-pending-dot"></span>
+              <span class="nm-pending-headline">"${m.headline}"</span>
+              <span class="nm-pending-eta">resolves next day</span>
+            </div>`).join('')}
+        </div>`
+      : '';
+
+    const limitColor = s.newsManipsToday >= s.MAX_NEWS_MANIPS_PER_DAY ? 'nm-limit-danger' : '';
+
+    container.innerHTML = `
+      <div class="nm-header">
+        <div class="nm-header-title">📰 NEWS CONTROL CENTER</div>
+        <div class="nm-header-meta">
+          <span class="nm-daily-limit ${limitColor}">${s.newsManipsToday} / ${s.MAX_NEWS_MANIPS_PER_DAY} TODAY</span>
+          ${cooldown > 0 ? `<span class="nm-cooldown">⏳ ${cooldown}s cooldown</span>` : ''}
+        </div>
+      </div>
+
+      <div class="nm-description">
+        Plant false stories and manipulate public perception. Every headline carries a cost — and a risk.
+      </div>
+
+      <div class="nm-cards">
+        ${NEWS_MANIP_TYPES.map(type => {
+          const disabled = !canPublish;
+          return `
+          <div class="nm-card nm-card-${type.id}">
+            <div class="nm-card-header">
+              <span class="nm-card-emoji">${type.emoji}</span>
+              <div class="nm-card-meta">
+                <div class="nm-card-title">${type.label}</div>
+                <div class="nm-card-tags">${type.tags.map(t => `<span class="nm-tag">${t}</span>`).join('')}</div>
+              </div>
+            </div>
+            <div class="nm-card-headline">"${type.headline}"</div>
+            <div class="nm-card-desc">${type.description}</div>
+            <div class="nm-card-effects">
+              <span class="nm-effect nm-effect-heat">+${type.heatOnPublish} HEAT on publish</span>
+              <span class="nm-effect nm-effect-hype">+${Math.round(type.hypeBoostOnSuccess * 100)}% HYPE on success</span>
+              ${type.heatOnFail > 0 ? `<span class="nm-effect nm-effect-fail">+${type.heatOnFail} HEAT on fail</span>` : ''}
+            </div>
+            <button class="nm-publish-btn" data-nm-type="${type.id}" ${disabled ? 'disabled' : ''}>
+              ${disabled
+                ? (cooldown > 0 ? `⏳ ${cooldown}s` : s.newsManipsToday >= s.MAX_NEWS_MANIPS_PER_DAY ? '✋ DAILY LIMIT' : '🔒 LOCKED')
+                : `📤 PUBLISH — $${type.cost.toLocaleString()}`}
+            </button>
+          </div>`;
+        }).join('')}
+      </div>
+
+      ${pendingHtml}`;
+
+    container.querySelectorAll<HTMLElement>('[data-nm-type]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const typeId = btn.dataset.nmType as NewsManipTypeId;
+        this._handlePublishNewsManip(typeId);
+      });
+    });
+  }
+
+  private _handlePublishNewsManip(typeId: NewsManipTypeId): void {
+    const type = NEWS_MANIP_TYPES.find(t => t.id === typeId);
+    if (!type) return;
+
+    const result = this.sys.publishNewsManip(typeId, amount => this.cb!.deductCash(amount));
+    if (!result.success) {
+      this.cb!.showToast(result.message, 'error');
+      return;
+    }
+
+    screenShake('light');
+    this.cb!.showToast(`📰 Story planted: "${type.headline}"`, 'info');
+    this._appendChatMsg('bm-chat-messages', 'left', `story's out. "${type.headline}" 📰`);
+    this._renderNewsPanel();
+  }
+
+  showBreakingNewsBanner(headline: string, success: boolean): void {
+    const banner   = document.getElementById('bm-breaking-banner');
+    const headlineEl = document.getElementById('bbn-headline');
+    const resultEl   = document.getElementById('bbn-result');
+    if (!banner || !headlineEl || !resultEl) return;
+
+    headlineEl.textContent = `"${headline}"`;
+    resultEl.textContent   = success ? '✅ LANDED' : '❌ TRACED';
+    banner.className = `bm-breaking-banner bm-breaking-${success ? 'success' : 'fail'}`;
+
+    void banner.offsetWidth; // force reflow for animation restart
+    banner.classList.add('bm-breaking-visible');
+
+    if (success) { screenFlash('good'); }
+    else         { screenFlash('bad'); screenShake('light'); }
+
+    setTimeout(() => {
+      banner.classList.remove('bm-breaking-visible');
+      setTimeout(() => { banner.className = 'bm-breaking-banner hidden'; }, 600);
+    }, 4000);
+  }
+
   // ── Unlock / tutorial ──────────────────────────────────────────────────────
 
   triggerUnlockNotif(): void {
@@ -868,6 +1012,28 @@ export class BlackMarketPanel {
     this._updateRivalsList();
     this._updateCustomerCards();
     this.socialPanel?.updateDisplay();
+
+    // Drain news manip results and show banner
+    const nmResults = this.sys.consumeNewsManipResults();
+    for (const r of nmResults) {
+      const type = NEWS_MANIP_TYPES.find(t => t.id === r.typeId);
+      const label = type?.label ?? r.typeId;
+      const toastMsg = r.success
+        ? `📰 Story landed: "${r.headline}" — hype boosted!`
+        : `📰 Story traced: "${r.headline}" — heat spiked!`;
+      this.cb?.showToast(toastMsg, r.success ? 'success' : 'error');
+      this._appendChatMsg(
+        'bm-chat-messages', 'left',
+        r.success ? `✅ "${label}" worked. hype is climbing 🚀` : `❌ "${label}" got traced. heat +${type?.heatOnFail ?? '?'} 🔥`,
+      );
+      this.showBreakingNewsBanner(r.headline, r.success);
+    }
+
+    // Refresh news panel if visible
+    const newsPane = document.getElementById('bm-pane-news');
+    if (newsPane && !newsPane.classList.contains('hidden')) {
+      this._renderNewsPanel();
+    }
   }
 
   private _updateRivalsList(): void {
