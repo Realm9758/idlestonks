@@ -15,6 +15,8 @@ interface GameEvent {
   weight: number;
   hint: string;
   apply: (market: Market, player: Player) => { message: string; severity: EventSeverity };
+  // Optional: fires the day before the event — small early move that confirms the hint
+  preTease?: (market: Market) => { message: string } | null;
 }
 
 // ── Stat-aware events ────────────────────────────────────────────────────────
@@ -32,6 +34,12 @@ const EVENTS: GameEvent[] = [
     id: 'cat_viral',
     weight: 10,
     hint: '🔥 Viral pump brewing',
+    preTease: (market) => {
+      const asset = market.getAsset('catcoin');
+      if (!asset || !asset.isUnlocked) return null;
+      asset.shock(1.05 + Math.random() * 0.04);
+      return { message: `📡 ${asset.emoji} ${asset.name} getting early traction... something's building.` };
+    },
     apply: (market) => {
       const asset = market.getAsset('catcoin');
       if (!asset) return { message: '🐱 Cat meme fizzled. Nobody cared.', severity: 'neutral' };
@@ -48,6 +56,12 @@ const EVENTS: GameEvent[] = [
     id: 'influencer_scandal',
     weight: 9,
     hint: '😬 Scandal incoming',
+    preTease: (market) => {
+      const asset = market.getAsset('influencer_stock');
+      if (!asset || !asset.isUnlocked) return null;
+      asset.shock(0.92 + Math.random() * 0.04);
+      return { message: `📡 ${asset.emoji} ${asset.name} looking shaky. Rumours circulating.` };
+    },
     apply: (market) => {
       const asset = market.getAsset('influencer_stock');
       if (!asset) return { message: '📸 Scandal contained. Somehow.', severity: 'neutral' };
@@ -64,6 +78,13 @@ const EVENTS: GameEvent[] = [
     id: 'meme_lord_awakens',
     weight: 5,
     hint: '😤 Meme surge coming',
+    preTease: (market) => {
+      let moved = '';
+      for (const asset of market.getUnlockedAssets()) {
+        if (asset.hype > 0.3) { asset.shock(1.04 + Math.random() * 0.03); moved = asset.name; }
+      }
+      return moved ? { message: `📡 High-hype assets stirring. ${moved} leading early moves.` } : null;
+    },
     apply: (market) => {
       let biggest = '';
       let biggestGain = 0;
@@ -83,6 +104,13 @@ const EVENTS: GameEvent[] = [
     id: 'hype_crash',
     weight: 7,
     hint: '📉 Hype collapse imminent',
+    preTease: (market) => {
+      let moved = '';
+      for (const asset of market.getUnlockedAssets()) {
+        if (asset.hype > 0.4) { asset.shock(0.93 + Math.random() * 0.04); moved = asset.name; }
+      }
+      return moved ? { message: `📡 Hype assets wobbling. ${moved} showing cracks.` } : null;
+    },
     apply: (market) => {
       let worst = '';
       let worstCrash = 1;
@@ -105,6 +133,10 @@ const EVENTS: GameEvent[] = [
     id: 'market_crash',
     weight: 2,
     hint: '☠️ Market crash warning',
+    preTease: (market) => {
+      for (const asset of market.getUnlockedAssets()) asset.shock(0.92 + Math.random() * 0.05);
+      return { message: '📡 Broad market weakness. Everything trending down ahead of a major event.' };
+    },
     apply: (market) => {
       for (const asset of market.getUnlockedAssets()) {
         const crashFloor = 0.15 + asset.stability * 0.50;
@@ -135,6 +167,10 @@ const EVENTS: GameEvent[] = [
     id: 'bull_run',
     weight: 2,
     hint: '🌕 Bull market forming',
+    preTease: (market) => {
+      for (const asset of market.getUnlockedAssets()) asset.shock(1.05 + Math.random() * 0.04);
+      return { message: '📡 Broad buying pressure across the market. Something big incoming.' };
+    },
     apply: (market) => {
       for (const asset of market.getUnlockedAssets()) {
         const mult = 1.4 + Math.random() * 1.2;
@@ -172,6 +208,12 @@ const EVENTS: GameEvent[] = [
     id: 'rug_pull_scare',
     weight: 7,
     hint: '🪤 Rug pull threat detected',
+    preTease: (market) => {
+      const asset = market.getAsset('rug_pull');
+      if (!asset || !asset.isUnlocked) return null;
+      asset.shock(0.91 + Math.random() * 0.05);
+      return { message: `📡 ${asset.emoji} ${asset.name} devs went quiet. Something's wrong.` };
+    },
     apply: (market) => {
       const asset = market.getAsset('rug_pull');
       if (!asset) return { message: '🪤 Rug pull target not found.', severity: 'neutral' };
@@ -186,6 +228,12 @@ const EVENTS: GameEvent[] = [
     id: 'nft_frenzy',
     weight: 5,
     hint: '🖼️ NFT frenzy building',
+    preTease: (market) => {
+      const asset = market.getAsset('nft_of_nft');
+      if (!asset || !asset.isUnlocked) return null;
+      asset.shock(1.08 + Math.random() * 0.05);
+      return { message: `📡 ${asset.emoji} ${asset.name} volume spiking. Collectors mobilising.` };
+    },
     apply: (market) => {
       const asset = market.getAsset('nft_of_nft');
       if (!asset) return { message: '🖼️ NFT market silent.', severity: 'neutral' };
@@ -200,6 +248,12 @@ const EVENTS: GameEvent[] = [
     id: 'diamond_festival',
     weight: 6,
     hint: '💎 Diamond convention coming',
+    preTease: (market) => {
+      const asset = market.getAsset('diamond_hands');
+      if (!asset || !asset.isUnlocked) return null;
+      asset.shock(1.06 + Math.random() * 0.03);
+      return { message: `📡 ${asset.emoji} ${asset.name} HODLers getting restless. Convention hype building.` };
+    },
     apply: (market) => {
       const asset = market.getAsset('diamond_hands');
       if (!asset) return { message: '💎 DiamondHands convention cancelled.', severity: 'neutral' };
@@ -228,6 +282,12 @@ const EVENTS: GameEvent[] = [
     id: 'ai_breakthrough',
     weight: 6,
     hint: '🤖 Tech breakthrough signal',
+    preTease: (market) => {
+      const asset = market.getAsset('ai_writes_ai');
+      if (!asset || !asset.isUnlocked) return null;
+      asset.shock(1.05 + Math.random() * 0.03);
+      return { message: `📡 ${asset.emoji} ${asset.name} patent filing leaked. Tech nerds excited.` };
+    },
     apply: (market) => {
       const asset = market.getAsset('ai_writes_ai');
       if (!asset) return { message: '🤖 AI too busy to respond.', severity: 'neutral' };
@@ -242,6 +302,12 @@ const EVENTS: GameEvent[] = [
     id: 'ai_scandal',
     weight: 8,
     hint: '💀 Tech scandal leaking',
+    preTease: (market) => {
+      const asset = market.getAsset('ai_writes_ai');
+      if (!asset || !asset.isUnlocked) return null;
+      asset.shock(0.91 + Math.random() * 0.05);
+      return { message: `📡 ${asset.emoji} ${asset.name} whistleblower talking to journalists. Traders nervous.` };
+    },
     apply: (market) => {
       const asset = market.getAsset('ai_writes_ai');
       if (!asset) return { message: '🤖 AI scandal unconfirmed.', severity: 'neutral' };
@@ -345,20 +411,25 @@ function weightedRandom(events: GameEvent[]): GameEvent {
 
 export interface EventSystemState {
   nextEventInDays: number;
+  driftCountdown?: number;
 }
 
 export class EventSystem {
   private log: EventLogEntry[] = [];
   private nextEventInDays: number;
   private nextEvent: GameEvent;
-  private hintEvent: GameEvent;  // what bloomberg shows (may be inaccurate)
+  private hintEvent: GameEvent;
   private entryIdCounter = 0;
   private readonly maxLogEntries = 25;
+  // (D) Trend drift — shifts a random asset's fundamental trend every 25–35 days
+  private driftCountdown: number;
+  private _preteased = false;
 
   constructor() {
     this.nextEvent = weightedRandom(EVENTS);
     this.hintEvent = this.nextEvent;
     this.nextEventInDays = this.randomInterval();
+    this.driftCountdown = 25 + Math.floor(Math.random() * 11);
   }
 
   private randomInterval(): number {
@@ -368,21 +439,45 @@ export class EventSystem {
   private schedule(hamsterOwned = false): void {
     this.nextEventInDays = this.randomInterval();
     this.nextEvent = weightedRandom(EVENTS);
-    // Hamster: 75% accurate. Bloomberg alone: always shows a hint but may be wrong.
+    this._preteased = false;
     const accurate = hamsterOwned ? Math.random() < 0.75 : Math.random() < 0.50;
     this.hintEvent = accurate ? this.nextEvent : weightedRandom(EVENTS);
   }
 
-  // Called once per DAY by IdleSystem (not every second).
-  dayTick(market: Market, player: Player, hamsterOwned = false): EventLogEntry | null {
+  // Called once per DAY by IdleSystem. Returns all log entries generated this day.
+  dayTick(market: Market, player: Player, hamsterOwned = false): EventLogEntry[] {
+    const entries: EventLogEntry[] = [];
+
+    // (D) Trend drift — fundamentals shift over time
+    this.driftCountdown--;
+    if (this.driftCountdown <= 0) {
+      const driftable = market.getUnlockedAssets().filter(a => a.id !== 'stonks_up');
+      if (driftable.length > 0) {
+        const target = driftable[Math.floor(Math.random() * driftable.length)];
+        const delta = (Math.random() > 0.5 ? 1 : -1) * 0.002;
+        target.trend = Math.max(-0.006, Math.min(0.010, target.trend + delta));
+        const dir = delta > 0 ? 'upward' : 'downward';
+        entries.push(this.addEntry(`📊 Analysts revise ${target.emoji} ${target.name} outlook ${dir}.`, 'neutral'));
+      }
+      this.driftCountdown = 25 + Math.floor(Math.random() * 11);
+    }
+
     this.nextEventInDays--;
+
+    // (E) Pre-signal tease — one day before event fires
+    if (this.nextEventInDays === 1 && !this._preteased) {
+      this._preteased = true;
+      const tease = this.nextEvent.preTease?.(market);
+      if (tease) entries.push(this.addEntry(tease.message, 'neutral'));
+    }
+
     if (this.nextEventInDays <= 0) {
       const result = this.nextEvent.apply(market, player);
-      const entry = this.addEntry(result.message, result.severity);
+      entries.push(this.addEntry(result.message, result.severity));
       this.schedule(hamsterOwned);
-      return entry;
     }
-    return null;
+
+    return entries;
   }
 
   addEntry(message: string, severity: EventSeverity = 'neutral'): EventLogEntry {
@@ -411,10 +506,11 @@ export class EventSystem {
   }
 
   saveState(): EventSystemState {
-    return { nextEventInDays: this.nextEventInDays };
+    return { nextEventInDays: this.nextEventInDays, driftCountdown: this.driftCountdown };
   }
 
   loadState(state: EventSystemState): void {
     this.nextEventInDays = state.nextEventInDays ?? this.randomInterval();
+    this.driftCountdown  = state.driftCountdown  ?? (25 + Math.floor(Math.random() * 11));
   }
 }

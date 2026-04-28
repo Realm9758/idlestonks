@@ -14,6 +14,17 @@ export class Market {
     for (const asset of this.assets.values()) {
       asset.tick();
     }
+    // Hype correlation: cat/doge share buzz; influencer/meme share buzz
+    this._applyHypeCorrelation('catcoin', 'doge_cousin', 0.015);
+    this._applyHypeCorrelation('influencer_stock', 'meme_etf', 0.010);
+  }
+
+  private _applyHypeCorrelation(idA: string, idB: string, rate: number): void {
+    const a = this.assets.get(idA);
+    const b = this.assets.get(idB);
+    if (!a || !b || !a.isUnlocked || !b.isUnlocked) return;
+    if (a.hype > b.hype) b.hype = Math.min(1, b.hype + (a.hype - b.hype) * rate);
+    else                 a.hype = Math.min(1, a.hype + (b.hype - a.hype) * rate);
   }
 
   getAsset(id: string): Asset | undefined {

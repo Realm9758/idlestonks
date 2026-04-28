@@ -104,10 +104,10 @@ export class IdleSystem {
   }
 
   private fireDayEvents(): void {
-    // Chaos events
+    // Chaos events + drift + pre-signal tease
     const hamster = this.upgradeSystem.getSignalIntelLevel() >= 3;
-    const entry = this.eventSystem.dayTick(this.market, this.player, hamster);
-    if (entry) this.callbacks.onEvent(entry);
+    const entries = this.eventSystem.dayTick(this.market, this.player, hamster);
+    for (const entry of entries) this.callbacks.onEvent(entry);
 
     // News generation + resolution
     if (this.newsSystem) {
