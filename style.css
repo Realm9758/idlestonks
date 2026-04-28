@@ -5938,3 +5938,114 @@ body {
   align-self: center;
 }
 .day-summary-close:hover { background: rgba(255,255,255,0.12); color: rgba(255,255,255,0.8); }
+
+/* ── Portfolio: inline sell + cost basis (#1 & #2) ─────────────────────── */
+.portfolio-row {
+  display: grid;
+  grid-template-columns: 1fr auto auto auto;
+  grid-template-rows: auto auto;
+  align-items: center;
+  gap: 2px 8px;
+  padding: 6px 8px;
+  border-radius: 6px;
+  transition: background 0.15s;
+}
+.portfolio-row:hover { background: rgba(255,255,255,0.04); }
+.p-name  { grid-column: 1; font-size: 12px; font-weight: 700; color: rgba(255,255,255,0.85); }
+.p-qty   { grid-column: 2; font-size: 11px; color: rgba(255,255,255,0.4); font-variant-numeric: tabular-nums; }
+.p-value { grid-column: 3; font-size: 12px; font-weight: 700; font-variant-numeric: tabular-nums; color: rgba(255,255,255,0.75); }
+.p-mom   { grid-column: 4; font-size: 14px; }
+.pf-basis-row { grid-column: 1 / 4; display: flex; gap: 6px; align-items: center; }
+.pf-avg  { font-size: 10px; color: rgba(255,255,255,0.3); font-variant-numeric: tabular-nums; }
+.pf-pl   { font-size: 10px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.pf-pl-pos { color: #00ff88; }
+.pf-pl-neg { color: #ff5555; }
+.pf-sell-btn {
+  grid-column: 4; grid-row: 2;
+  font-size: 9px; font-weight: 700; font-family: var(--font);
+  letter-spacing: 0.06em; padding: 2px 6px;
+  background: rgba(255,85,85,0.12); border: 1px solid rgba(255,85,85,0.3);
+  border-radius: 4px; color: #ff5555; cursor: pointer;
+  transition: background 0.12s;
+}
+.pf-sell-btn:hover { background: rgba(255,85,85,0.25); }
+
+/* ── Asset signal badge (#3) ────────────────────────────────────────────── */
+.ind-signal-badge { font-size: 11px; font-weight: 800; letter-spacing: 0.04em; }
+
+/* ── Upgrades: 3-column layout (#4) ────────────────────────────────────── */
+.upg-three-col {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 16px;
+  margin-top: 4px;
+}
+.upg-col { display: flex; flex-direction: column; gap: 8px; }
+.upg-col-hdr {
+  font-size: 11px; font-weight: 800; letter-spacing: 0.1em;
+  color: rgba(255,255,255,0.45); padding: 6px 0 2px;
+  border-bottom: 1px solid rgba(255,255,255,0.08);
+}
+.upg-section-header-top  { margin-bottom: 8px; }
+.upg-section-header-paths { margin: 16px 0 4px; }
+.upg-section-sub { font-size: 10px; font-weight: 400; color: rgba(255,255,255,0.3); margin-left: 6px; letter-spacing: 0.02em; }
+/* Hide the old path tabs if they survived */
+.upg-path-tabs { display: none; }
+.upg-path-hidden { display: none; }
+
+/* ── Upgrades: next-level preview already rendered, just style it (#5) ─── */
+.upg-next-effect {
+  font-size: 10px; color: rgba(255,255,255,0.35);
+  background: rgba(255,255,255,0.04); border-left: 2px solid rgba(255,255,255,0.12);
+  padding: 3px 6px; border-radius: 0 4px 4px 0; margin-top: 4px;
+}
+
+/* ── BM: inline heat bar (#7) ───────────────────────────────────────────── */
+.bm-heat-inline { margin-top: 8px; }
+.bm-heat-inline-top {
+  display: flex; align-items: center; gap: 6px; margin-bottom: 4px;
+}
+.bm-heat-inline-lbl {
+  font-size: 9px; font-weight: 800; letter-spacing: 0.1em;
+  color: rgba(255,255,255,0.35); flex-shrink: 0;
+}
+.bm-heat-bar-wrap {
+  height: 6px; background: rgba(255,255,255,0.08);
+  border-radius: 3px; overflow: hidden;
+}
+.bm-heat-bar-fill {
+  height: 100%; border-radius: 3px;
+  transition: width 0.4s ease, background 0.4s ease;
+}
+.bm-heat-bar-fill.risk-low  { background: linear-gradient(90deg, #00cc66, #00ff88); }
+.bm-heat-bar-fill.risk-mid  { background: linear-gradient(90deg, #ffaa00, #ffdd44); }
+.bm-heat-bar-fill.risk-high { background: linear-gradient(90deg, #ff4444, #ff0000); box-shadow: 0 0 8px rgba(255,0,0,0.5); }
+
+/* ── BM: call confidence meter (#6) ────────────────────────────────────── */
+.bm-conf-wrap {
+  display: flex; align-items: center; gap: 6px;
+  margin-top: 6px; padding-top: 6px;
+  border-top: 1px solid rgba(255,255,255,0.06);
+}
+.bm-conf-lbl { font-size: 9px; font-weight: 800; letter-spacing: 0.1em; color: rgba(255,255,255,0.3); flex-shrink: 0; }
+.bm-conf-track { flex: 1; height: 5px; background: rgba(255,255,255,0.08); border-radius: 3px; overflow: hidden; }
+.bm-conf-fill  { height: 100%; border-radius: 3px; transition: width 0.4s ease, background 0.4s ease; }
+.bm-conf-low  { background: #ff5555; }
+.bm-conf-mid  { background: #ffaa00; }
+.bm-conf-high { background: #00ff88; }
+.bm-conf-pct  { font-size: 9px; font-weight: 700; color: rgba(255,255,255,0.45); font-variant-numeric: tabular-nums; flex-shrink: 0; width: 26px; text-align: right; }
+
+/* ── Net worth milestone popup (#9) ────────────────────────────────────── */
+.milestone-popup {
+  position: fixed; bottom: 80px; left: 50%; transform: translateX(-50%) translateY(20px);
+  background: rgba(14,14,22,0.96); border: 1px solid rgba(0,255,136,0.35);
+  border-radius: 10px; padding: 10px 20px;
+  display: flex; flex-direction: column; align-items: center; gap: 2px;
+  opacity: 0; transition: opacity 0.25s ease, transform 0.25s ease;
+  pointer-events: none; z-index: 9000;
+  box-shadow: 0 0 24px rgba(0,255,136,0.2);
+}
+.milestone-visible { opacity: 1 !important; transform: translateX(-50%) translateY(0) !important; }
+.milestone-out     { opacity: 0 !important; transform: translateX(-50%) translateY(-12px) !important; }
+.ms-label { font-size: 14px; font-weight: 900; letter-spacing: 0.08em; color: #00ff88; }
+.ms-sub   { font-size: 10px; color: rgba(255,255,255,0.4); }

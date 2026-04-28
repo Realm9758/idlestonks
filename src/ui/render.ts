@@ -13,7 +13,7 @@ import { INVESTOR_TIERS } from '../systems/InvestorSystem.ts';
 import { PATH_UPGRADES } from '../systems/UpgradeSystem.ts';
 import {
   formatCurrency, formatPct, timeAgo, createEl,
-  getInsightText, getMomentumArrow,
+  getInsightText, getMomentumArrow, getSignalLabel,
   getStockTags, getRecommendedPlay, getOpportunityScore, getTimingAdvice, getRiskWarning,
 } from './components.ts';
 import { flashPrice, spawnFloatingText, pulseElement, sweepRow, spawnBuyParticles, spawnCashDelta } from './animations.ts';
@@ -97,7 +97,7 @@ export class Renderer {
   // Upgrades tab change detection
   private lastUpgradeKey = '';
   private lastInvestorKey = '';
-  private activeUpgradePath: 'automation' | 'manipulation' | 'capital' = 'automation';
+
 
   // News change-detection
   private newsActiveKey = '';
@@ -271,17 +271,23 @@ export class Renderer {
   <!-- Upgrades tab panel -->
   <div id="upgrades-tab-panel" class="hidden">
     <div class="upg-tab-wrap">
-      <div class="upg-path-tabs">
-        <button class="upg-path-tab upg-path-tab-active" data-path="automation">🤖 Automation</button>
-        <button class="upg-path-tab" data-path="manipulation">📢 Manipulation</button>
-        <button class="upg-path-tab" data-path="capital">📈 Capital</button>
-      </div>
-      <div id="upg-path-automation" class="upg-path-grid"></div>
-      <div id="upg-path-manipulation" class="upg-path-grid upg-path-hidden"></div>
-      <div id="upg-path-capital" class="upg-path-grid upg-path-hidden"></div>
-      <div class="upg-section-header">👥 Investor Network</div>
-      <p class="upg-investor-hint">Hire specialists who generate passive income based on your net worth every tick.</p>
+      <div class="upg-section-header upg-section-header-top">👥 Investor Network <span class="upg-section-sub">passive income · scales with net worth</span></div>
       <div id="upg-investor-grid" class="upg-investor-grid"></div>
+      <div class="upg-section-header upg-section-header-paths">🛠 Upgrade Paths <span class="upg-section-sub">invest in your edge</span></div>
+      <div class="upg-three-col">
+        <div class="upg-col">
+          <div class="upg-col-hdr">🤖 Automation</div>
+          <div id="upg-path-automation" class="upg-path-grid"></div>
+        </div>
+        <div class="upg-col">
+          <div class="upg-col-hdr">📢 Manipulation</div>
+          <div id="upg-path-manipulation" class="upg-path-grid"></div>
+        </div>
+        <div class="upg-col">
+          <div class="upg-col-hdr">📈 Capital</div>
+          <div id="upg-path-capital" class="upg-path-grid"></div>
+        </div>
+      </div>
     </div>
   </div>
 
@@ -457,17 +463,10 @@ export class Renderer {
       if (!btn || btn.classList.contains('tab-locked')) return;
       this.switchTab(btn.dataset.tab as 'main' | 'upgrades' | 'bm' | 'hf');
     });
-    document.getElementById('upgrades-tab-panel')!.addEventListener('click', (e) => {
-      const btn = (e.target as HTMLElement).closest<HTMLElement>('[data-path]');
-      if (!btn) return;
-      const path = btn.dataset.path as 'automation' | 'manipulation' | 'capital';
-      this.activeUpgradePath = path;
-      document.querySelectorAll<HTMLElement>('.upg-path-tab').forEach(b => {
-        b.classList.toggle('upg-path-tab-active', b.dataset.path === path);
-      });
-      document.querySelectorAll<HTMLElement>('.upg-path-grid').forEach(g => {
-        g.classList.toggle('upg-path-hidden', g.id !== `upg-path-${path}`);
-      });
+    // Portfolio: delegate sell-all on portfolio rows
+    document.getElementById('portfolio-list')!.addEventListener('click', (e) => {
+      const btn = (e.target as HTMLElement).closest<HTMLElement>('[data-pf-sell]');
+      if (btn?.dataset.pfSell) this.callbacks.onSellAll(btn.dataset.pfSell);
     });
     document.getElementById('btn-dark')!.addEventListener('click', () => this.callbacks.onDarkModeToggle());
     document.getElementById('btn-skip-day')!.addEventListener('click', () => this.callbacks.onSkipDay());
@@ -533,7 +532,7 @@ export class Renderer {
     this.currentSecPerDay = secondsPerDay;
     this.updateHeader(player, market, upgradeSystem, day);
     this.updateMarket(market, player, upgradeSystem, day);
-    this.updatePortfolio(market);
+    this.updatePortfolio(market, player);
     this.updateNews(newsSystem, day, secondsInDay, secondsPerDay);
     this.updateEvents(eventSystem, upgradeSystem, day, secondsInDay, secondsPerDay);
     this.updateUpgradesTab(upgradeSystem, player, market);
@@ -618,17 +617,10 @@ export class Renderer {
       changeEl.textContent = formatPct(pct);
       changeEl.className = 'asset-change ' + (pct >= 0 ? 'green' : 'red');
 
-      // ── Live indicators: labeled stat badges ──────────────────────────
-      const hypeL = asset.getHypeLabel(), momL = asset.getMomentumLabel(),
-            stabL = asset.getStabilityLabel(), riskL = asset.getRiskLabel();
-      const hb = row.querySelector('.ind-hype-badge') as HTMLElement | null;
-      if (hb) { hb.textContent = `${hypeL.icon} Hype: ${hypeL.text}`; hb.className = `stat-badge ${hypeL.cls} ind-hype-badge`; }
-      const mb = row.querySelector('.ind-mom-badge')  as HTMLElement | null;
-      if (mb) { mb.textContent = `${momL.icon} ${momL.text}`;         mb.className = `stat-badge ${momL.cls} ind-mom-badge`; }
-      const sb = row.querySelector('.ind-stab-badge') as HTMLElement | null;
-      if (sb) { sb.textContent = `${stabL.icon} ${stabL.text}`;       sb.className = `stat-badge ${stabL.cls} ind-stab-badge`; }
-      const rb = row.querySelector('.ind-risk-badge') as HTMLElement | null;
-      if (rb) { rb.textContent = `${riskL.icon} Risk: ${riskL.text}`; rb.className = `stat-badge ${riskL.cls} ind-risk-badge`; }
+      // ── Single signal badge ────────────────────────────────────────────
+      const sig = getSignalLabel(asset);
+      const sigBadge = row.querySelector('.ind-signal-badge') as HTMLElement | null;
+      if (sigBadge) { sigBadge.textContent = sig.text; sigBadge.className = `stat-badge ${sig.cls} ind-signal-badge`; }
 
       // ── Stock tags ─────────────────────────────────────────────────────
       const tagsEl = row.querySelector('.asset-tags') as HTMLElement | null;
@@ -705,10 +697,7 @@ export class Renderer {
               <span class="asset-trend hidden"></span>
             </div>
             <div class="asset-badge-row">
-              <span class="stat-badge sl-muted ind-hype-badge">🔥 —</span>
-              <span class="stat-badge sl-muted ind-mom-badge">→ —</span>
-              <span class="stat-badge sl-muted ind-stab-badge">🛡 —</span>
-              <span class="stat-badge sl-muted ind-risk-badge">🎲 —</span>
+              <span class="stat-badge sl-muted ind-signal-badge">— —</span>
             </div>
             <div class="asset-tags"></div>
             <div class="asset-news-line hidden"></div>
@@ -735,16 +724,9 @@ export class Renderer {
       </div>
     `;
 
-    const _hL = asset.getHypeLabel(), _mL = asset.getMomentumLabel(),
-          _sL = asset.getStabilityLabel(), _rL = asset.getRiskLabel();
-    const _hb = row.querySelector('.ind-hype-badge') as HTMLElement;
-    _hb.textContent = `${_hL.icon} Hype: ${_hL.text}`; _hb.className = `stat-badge ${_hL.cls} ind-hype-badge`;
-    const _mb = row.querySelector('.ind-mom-badge') as HTMLElement;
-    _mb.textContent = `${_mL.icon} ${_mL.text}`;       _mb.className = `stat-badge ${_mL.cls} ind-mom-badge`;
-    const _sb = row.querySelector('.ind-stab-badge') as HTMLElement;
-    _sb.textContent = `${_sL.icon} ${_sL.text}`;       _sb.className = `stat-badge ${_sL.cls} ind-stab-badge`;
-    const _rb = row.querySelector('.ind-risk-badge') as HTMLElement;
-    _rb.textContent = `${_rL.icon} Risk: ${_rL.text}`; _rb.className = `stat-badge ${_rL.cls} ind-risk-badge`;
+    const _sig = getSignalLabel(asset);
+    const _sb2 = row.querySelector('.ind-signal-badge') as HTMLElement;
+    _sb2.textContent = _sig.text; _sb2.className = `stat-badge ${_sig.cls} ind-signal-badge`;
 
     const qtyInput = row.querySelector('.qty-input') as HTMLInputElement;
     row.querySelector('.btn-qty-dec')!.addEventListener('click', () => {
@@ -819,7 +801,7 @@ export class Renderer {
 
   // ── Portfolio ─────────────────────────────────────────────────────────────
 
-  private updatePortfolio(market: Market): void {
+  private updatePortfolio(market: Market, player?: Player): void {
     const container = document.getElementById('portfolio-list')!;
     const owned = market.getAllAssets().filter(a => a.owned > 0);
 
@@ -834,17 +816,28 @@ export class Renderer {
 
     container.innerHTML = '';
     for (const asset of owned) {
-      const pct = asset.getPriceChangePct();
       const arrow = getMomentumArrow(asset.momentum);
       const isUp = asset.momentum > 0.006;
       const isDown = asset.momentum < -0.006;
+
+      // Cost basis P&L
+      const avgCost = player?.costBasis[asset.id] ?? null;
+      let plHtml = '';
+      if (avgCost && avgCost > 0) {
+        const plPct = ((asset.price - avgCost) / avgCost) * 100;
+        const plCls = plPct >= 0 ? 'pf-pl-pos' : 'pf-pl-neg';
+        const plSign = plPct >= 0 ? '+' : '';
+        plHtml = `<span class="pf-avg">avg ${formatCurrency(avgCost)}</span><span class="pf-pl ${plCls}">${plSign}${plPct.toFixed(1)}%</span>`;
+      }
+
       const row = createEl('div', 'portfolio-row');
       row.innerHTML = `
         <span class="p-name">${asset.emoji} ${asset.name}</span>
         <span class="p-qty">${asset.owned}×</span>
         <span class="p-value">${formatCurrency(asset.getValue())}</span>
-        <span class="p-change ${pct >= 0 ? 'green' : 'red'}">${formatPct(pct)}</span>
         <span class="p-mom ${isUp ? 'green' : isDown ? 'red' : 'muted'}">${arrow}</span>
+        <div class="pf-basis-row">${plHtml}</div>
+        <button class="pf-sell-btn" data-pf-sell="${asset.id}" title="Sell all ${asset.name}">Sell All</button>
       `;
       container.appendChild(row);
     }
@@ -1701,6 +1694,21 @@ export class Renderer {
   revealHedgeFundTab(): void {
     const btn = document.getElementById('tab-hf');
     if (btn) { btn.classList.remove('tab-locked', 'hidden'); }
+  }
+
+  showMilestone(label: string, sub: string): void {
+    const existing = document.getElementById('milestone-popup');
+    if (existing) existing.remove();
+    const el = document.createElement('div');
+    el.id = 'milestone-popup';
+    el.className = 'milestone-popup';
+    el.innerHTML = `<span class="ms-label">${label}</span><span class="ms-sub">${sub}</span>`;
+    document.body.appendChild(el);
+    requestAnimationFrame(() => requestAnimationFrame(() => el.classList.add('milestone-visible')));
+    setTimeout(() => {
+      el.classList.add('milestone-out');
+      setTimeout(() => el.remove(), 400);
+    }, 2500);
   }
 
   showDaySummary(opts: {

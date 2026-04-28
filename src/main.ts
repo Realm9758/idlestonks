@@ -53,6 +53,10 @@ let dayStartNetWorth = 0;
 let dayStartBmCalls  = 0;
 let dayStartBmPosts  = 0;
 
+const MILESTONES = [5_000, 10_000, 25_000, 50_000, 100_000, 250_000, 500_000, 1_000_000];
+const MILESTONE_LABELS = ['$5K', '$10K', '$25K', '$50K', '$100K', '$250K', '$500K', '$1M'];
+let lastMilestoneIdx = -1;
+
 // hfSystem declared before IdleSystem so it can be passed in
 const idleSystem = new IdleSystem(
   market, player, eventSystem, upgradeSystem, saveSystem,
@@ -60,6 +64,15 @@ const idleSystem = new IdleSystem(
 
     onTick(tick, day, secondsInDay, secondsPerDay) {
       const nw = player.getNetWorth(market);
+
+      // Net worth milestone check
+      for (let i = lastMilestoneIdx + 1; i < MILESTONES.length; i++) {
+        if (nw >= MILESTONES[i]) {
+          lastMilestoneIdx = i;
+          renderer.showMilestone(`💰 ${MILESTONE_LABELS[i]} NET WORTH`, `Day ${day + 1} · ${market.getUnlockedAssets().filter(a => a.owned > 0).length} positions`);
+          soundSystem.play('rank_up');
+        } else break;
+      }
 
       // Rank-up check
       const { rankUp, newRank } = rankSystem.checkRankUp(nw);

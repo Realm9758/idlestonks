@@ -200,6 +200,7 @@ interface CallState {
   customer: BmCustomer;
   accMods: CallMods;
   round: 1 | 2 | 'resolving' | 'done';
+  confidence: number; // 0–100, visual feedback only
 }
 
 export class BlackMarketPanel {
@@ -284,6 +285,19 @@ export class BlackMarketPanel {
             <span class="bm-invested-label">TOTAL POOL</span>
             <span id="bm-total-invested" class="bm-invested-val">$0</span>
           </div>
+
+          <!-- Heat bar lives here now — always in view while calling -->
+          <div class="bm-heat-inline">
+            <div class="bm-heat-inline-top">
+              <span class="bm-heat-inline-lbl">HEAT</span>
+              <span id="bm-threat-badge" class="bm-threat-badge bm-threat-safe">SAFE</span>
+              <span id="bm-risk-label" class="bm-risk-label">0%</span>
+            </div>
+            <div class="bm-heat-bar-wrap">
+              <div id="bm-risk-fill" class="bm-heat-bar-fill risk-low" style="width:0%"></div>
+            </div>
+            <div id="bm-risk-warn" class="bm-risk-warn hidden">⚠️ CRITICAL — CASE RISK</div>
+          </div>
         </div>
 
         <div class="bm-targets-hdr">
@@ -305,23 +319,8 @@ export class BlackMarketPanel {
         <div id="bm-rivals-list" class="bm-rivals-list"></div>
       </div>
 
-      <!-- RIGHT: THREAT INTEL -->
+      <!-- RIGHT: CASE & STATS -->
       <div class="bm-risk-col">
-
-        <div class="bm-intel-header">
-          <span class="bm-risk-title">THREAT LEVEL</span>
-          <span id="bm-threat-badge" class="bm-threat-badge bm-threat-safe">SAFE</span>
-        </div>
-
-        <div class="bm-heat-meter-row">
-          <div class="bm-risk-meter-wrap">
-            <div id="bm-risk-fill" class="bm-risk-fill risk-low" style="height:0%"></div>
-          </div>
-          <div class="bm-heat-readout">
-            <div id="bm-risk-label" class="bm-risk-label">0%</div>
-            <div id="bm-risk-warn" class="bm-risk-warn hidden">⚠️ CRITICAL</div>
-          </div>
-        </div>
 
         <!-- Shown when heat ≥ 60 -->
         <div id="bm-case-block" class="bm-case-block hidden">
@@ -423,6 +422,13 @@ export class BlackMarketPanel {
               <div class="bm-call-customer-wealth" id="bm-call-wealth"></div>
             </div>
           </div>
+          <div class="bm-conf-wrap">
+            <span class="bm-conf-lbl">TRUST</span>
+            <div class="bm-conf-track">
+              <div id="bm-conf-fill" class="bm-conf-fill" style="width:35%"></div>
+            </div>
+            <span id="bm-conf-pct" class="bm-conf-pct">35%</span>
+          </div>
         </div>
         <div id="bm-call-chat" class="bm-call-chat"></div>
         <div id="bm-call-choices" class="bm-call-choices"></div>
@@ -483,7 +489,9 @@ export class BlackMarketPanel {
       customer,
       accMods: { trustBonus: 0, amountMult: 1.0, extraHeat: 0 },
       round: 1,
+      confidence: 35,
     };
+    this._updateConfidence(35);
 
     const lines = CUSTOMER_LINES[customerId];
     const wealthColors: Record<string, string> = { poor: '#ff9966', mid: '#ffd966', rich: '#00ff88' };
@@ -531,6 +539,9 @@ export class BlackMarketPanel {
     this._callState.accMods.amountMult *= opt.amountMult;
     this._callState.accMods.extraHeat  += opt.extraHeat;
     this._callState.round = 2;
+    const confDelta = opt.trustBonus > 0.12 ? 22 : opt.trustBonus > 0 ? 12 : opt.extraHeat > 3 ? -8 : 5;
+    this._callState.confidence = Math.min(95, Math.max(5, this._callState.confidence + confDelta));
+    this._updateConfidence(this._callState.confidence);
 
     document.getElementById('bm-call-choices')!.innerHTML = '';
     this._addCallBubble('right', opt.playerText);
@@ -562,6 +573,9 @@ export class BlackMarketPanel {
     accMods.amountMult *= opt.amountMult;
     accMods.extraHeat  += opt.extraHeat;
     this._callState.round = 'resolving';
+    const confDelta = opt.id === 'smallask' ? 10 : opt.id === 'bigask' ? -5 : opt.id === 'peer' ? -3 : 5;
+    this._callState.confidence = Math.min(95, Math.max(5, this._callState.confidence + confDelta));
+    this._updateConfidence(this._callState.confidence);
 
     document.getElementById('bm-call-choices')!.innerHTML = '';
     this._addCallBubble('right', opt.playerText);
@@ -677,17 +691,38 @@ export class BlackMarketPanel {
     document.getElementById('bm-typing-indicator')?.remove();
   }
 
+  private _updateConfidence(pct: number): void {
+    const fill = document.getElementById('bm-conf-fill') as HTMLElement | null;
+    const label = document.getElementById('bm-conf-pct');
+    if (fill) {
+      fill.style.width = `${pct}%`;
+      fill.className = `bm-conf-fill ${pct >= 60 ? 'bm-conf-high' : pct >= 35 ? 'bm-conf-mid' : 'bm-conf-low'}`;
+    }
+    if (label) label.textContent = `${pct}%`;
+  }
+
   // ── Rug pull ──────────────────────────────────────────────────────────────
 
   private _handleRugPull(): void {
     if (!this.sys.canRugPull()) return;
     const { profit, totalStolen } = this.sys.rugPull();
     this.cb!.addCash(profit);
-    this.cb!.showToast(`💀 RUG PULLED! Stole $${totalStolen.toLocaleString()}, you keep $${profit.toLocaleString()}`, 'chaos');
-    this._appendChatMsg('bm-chat-messages', 'left', `bro you actually did it 💀 $${profit.toLocaleString()} in your pocket. GG`);
     screenShake('heavy');
     screenFlash('bad');
-    this.updateDisplay();
+
+    // Post-rug ritual — lock UI, show wire transfer, then unlock
+    const rugBtn = document.getElementById('btn-rug-pull') as HTMLButtonElement | null;
+    if (rugBtn) rugBtn.disabled = true;
+
+    this._appendChatMsg('bm-chat-messages', 'left', '⚡ INITIATING WIRE TRANSFER...');
+    setTimeout(() => {
+      this._appendChatMsg('bm-chat-messages', 'left', `💸 $${profit.toLocaleString()} routed through 7 shell companies`);
+    }, 1000);
+    setTimeout(() => {
+      this._appendChatMsg('bm-chat-messages', 'left', `✅ funds landed. clean. they got nothing 😈`);
+      this.cb!.showToast(`💀 RUG PULLED! Stole $${totalStolen.toLocaleString()}, you keep $${profit.toLocaleString()}`, 'chaos');
+      this.updateDisplay();
+    }, 2800);
   }
 
   private _handleLayLow(): void {
@@ -768,14 +803,14 @@ export class BlackMarketPanel {
 
     const riskFill = g('bm-risk-fill') as HTMLElement | null;
     if (riskFill) {
-      riskFill.style.height = `${s.heat}%`;
-      riskFill.className = `bm-risk-fill ${s.heat < 35 ? 'risk-low' : s.heat < 65 ? 'risk-mid' : 'risk-high'}`;
+      riskFill.style.width = `${s.heat}%`;
+      riskFill.className = `bm-heat-bar-fill ${s.heat < 35 ? 'risk-low' : s.heat < 65 ? 'risk-mid' : 'risk-high'}`;
     }
     const riskLbl = g('bm-risk-label');
     if (riskLbl) riskLbl.textContent = `${Math.round(s.heat)}%`;
     g('bm-risk-warn')?.classList.toggle('hidden', s.heat < 85);
 
-    // Threat badge
+    // Threat badge (now inline in the MoonCoin card)
     const threatBadge = g('bm-threat-badge') as HTMLElement | null;
     if (threatBadge) {
       const lvl = s.getHeatLevel();
@@ -790,7 +825,6 @@ export class BlackMarketPanel {
       threatBadge.className   = `bm-threat-badge ${cls}`;
     }
 
-    // Hype percentage
     const hypePct = g('bm-hype-pct') as HTMLElement | null;
     if (hypePct) hypePct.textContent = `${(s.stock.hype * 100).toFixed(0)}%`;
 

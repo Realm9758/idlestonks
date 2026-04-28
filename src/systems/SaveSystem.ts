@@ -15,6 +15,7 @@ interface SaveData {
   tradeCount: number;
   prices: Record<string, number>;
   owned: Record<string, number>;
+  costBasis?: Record<string, number>;
   upgrades: ReturnType<UpgradeSystem['saveState']>;
   savedAt: number;
   day: number;
@@ -68,6 +69,7 @@ export class SaveSystem {
       tradeCount: player.tradeCount,
       prices,
       owned,
+      costBasis: player.costBasis,
       upgrades: upgradeSystem.saveState(),
       savedAt: Date.now(),
       day: idleSystem?.getDayCount() ?? 0,
@@ -109,6 +111,7 @@ export class SaveSystem {
     player.cash = data.cash ?? 1000;
     player.totalEarned = data.totalEarned ?? 0;
     player.tradeCount = data.tradeCount ?? 0;
+    player.costBasis = data.costBasis ?? {};
     market.loadPrices(data.prices ?? {}, data.owned ?? {});
     if (data.upgrades) upgradeSystem.load(data.upgrades);
     if (idleSystem) {

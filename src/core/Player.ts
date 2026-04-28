@@ -5,6 +5,7 @@ export class Player {
   totalEarned: number;
   tradeCount: number;
   earningsMultiplier: number;
+  costBasis: Record<string, number> = {}; // avg cost per unit, per asset
 
   constructor() {
     this.cash = 1000;
@@ -32,8 +33,11 @@ export class Player {
       return { success: false, message: `Need $${cost.toFixed(2)} but only have $${this.cash.toFixed(2)}.` };
     }
 
+    const prevOwned = asset.owned;
+    const prevBasis = this.costBasis[assetId] ?? asset.price;
     this.cash -= cost;
     asset.owned += quantity;
+    this.costBasis[assetId] = (prevBasis * prevOwned + cost) / asset.owned;
     this.tradeCount++;
     return { success: true, message: `Bought ${quantity}× ${asset.emoji} ${asset.name} for $${cost.toFixed(2)}` };
   }

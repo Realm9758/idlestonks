@@ -228,3 +228,16 @@ export function getTradeInsight(asset: Asset, action: 'buy' | 'sell'): string {
     return `✅ Sold — check momentum and hype before re-entering`;
   }
 }
+
+export interface SignalLabel { text: string; cls: string; }
+
+export function getSignalLabel(asset: Asset): SignalLabel {
+  if (asset.momentum > 0.025)                          return { text: '🚀 SURGING',  cls: 'sl-great' };
+  if (asset.momentum < -0.025)                         return { text: '☠️ CRASHING', cls: 'sl-danger' };
+  if (asset.hype > 0.65 && asset.momentum > -0.008)   return { text: '🔥 HOT',      cls: 'sl-good' };
+  if (asset.momentum > 0.010)                          return { text: '📈 RISING',   cls: 'sl-good' };
+  if (asset.momentum < -0.010)                         return { text: '📉 FALLING',  cls: 'sl-bad' };
+  if (asset.risk > 0.7 && asset.stability < 0.2)       return { text: '🎲 RISKY',    cls: 'sl-warn' };
+  if (asset.stability > 0.6 && asset.momentum > -0.005) return { text: '🛡 STEADY',  cls: 'sl-neutral' };
+  return { text: '➡️ FLAT', cls: 'sl-muted' };
+}
