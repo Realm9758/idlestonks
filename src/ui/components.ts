@@ -1,4 +1,5 @@
 import type { Asset } from '../core/Asset.ts';
+import type { NewsItem } from '../core/NewsSystem.ts';
 
 export function formatCurrency(value: number): string {
   if (value >= 1_000_000_000) return `$${(value / 1_000_000_000).toFixed(2)}B`;
@@ -240,4 +241,228 @@ export function getSignalLabel(asset: Asset): SignalLabel {
   if (asset.risk > 0.7 && asset.stability < 0.2)       return { text: '🎲 RISKY',    cls: 'sl-warn' };
   if (asset.stability > 0.6 && asset.momentum > -0.005) return { text: '🛡 STEADY',  cls: 'sl-neutral' };
   return { text: '➡️ FLAT', cls: 'sl-muted' };
+}
+
+// ── Sector system ─────────────────────────────────────────────────────────────
+
+export interface SectorDef {
+  id: string;
+  emoji: string;
+  label: string;
+  description: string;
+}
+
+export const SECTORS: SectorDef[] = [
+  { id: 'hype',  emoji: '🐸', label: 'Hype Riders',  description: 'Buy the spike, sell before decay' },
+  { id: 'blue',  emoji: '🏦', label: 'Blue Chips',   description: 'Steady growers — buy and hold' },
+  { id: 'blend', emoji: '🎲', label: 'Blends',        description: 'Moderate risk, catches pumps' },
+  { id: 'chaos', emoji: '💥', label: 'Chaos Assets', description: 'Only enter on catalyst' },
+];
+
+export const SECTOR_ORDER = ['hype', 'blue', 'blend', 'chaos'] as const;
+
+export const SECTOR_MAP: Record<string, string> = {
+  catcoin:          'hype',
+  doge_cousin:      'hype',
+  influencer_stock: 'hype',
+  stonks_up:        'blue',
+  ai_writes_ai:     'blue',
+  meme_etf:         'blend',
+  diamond_hands:    'blend',
+  quantum_banana:   'chaos',
+  rug_pull:         'chaos',
+  nft_of_nft:       'chaos',
+};
+
+export const CORRELATED_PAIRS: Array<{ ids: [string, string]; warning: string }> = [
+  {
+    ids: ['catcoin', 'doge_cousin'],
+    warning: "🐱🐕 CatCoin & Doge's Cousin are correlated — both pump and crash on meme events",
+  },
+  {
+    ids: ['influencer_stock', 'meme_etf'],
+    warning: '📸😂 Influencer Stock & Meme ETF share hype cycles — consider reducing overlap',
+  },
+];
+
+// ── Hype decay estimate ────────────────────────────────────────────────────────
+
+export function getHypeDecayTicks(asset: Asset): number {
+  if (asset.hype <= 0.15) return 0;
+  return Math.max(1, Math.round(Math.log(0.15 / asset.hype) / Math.log(asset.hypeDecay)));
+}
+
+// ── Live story sentence (shown on each stock card) ────────────────────────────
+//
+// Priority: pending news > hype state > momentum > carrying cost bleed > trend
+
+export function getStorySentence(asset: Asset, activeNews: NewsItem[], day: number): string {
+  const TYPE_ICONS: Record<string, string> = {
+    hype: '🔥', growth: '📈', breakthrough: '⚡', scandal: '🕵️', crash: '💥',
+  };
+
+  // Priority 1: pending news catalyst
+  const news = activeNews.filter(n => n.targetAssetId === asset.id);
+  if (news.length > 0) {
+    const n = news[0];
+    const daysLeft = n.triggerDay - day;
+    const dayStr   = daysLeft <= 1 ? 'today' : `in ${daysLeft}d`;
+    const sDir = n.successMult >= 1
+      ? `+${((n.successMult - 1) * 100).toFixed(0)}%`
+      : `-${((1 - n.successMult) * 100).toFixed(0)}%`;
+    const fDir = n.failMult >= 1
+      ? `+${((n.failMult - 1) * 100).toFixed(0)}%`
+      : `-${((1 - n.failMult) * 100).toFixed(0)}%`;
+    const icon = TYPE_ICONS[n.type] ?? '📰';
+    return `${icon} News resolves ${dayStr} · ✅ ${sDir} · ❌ ${fDir}`;
+  }
+
+  // Priority 2: hype state
+  const decayTicks = getHypeDecayTicks(asset);
+  if (asset.hype > 0.75 && asset.momentum > 0.005)
+    return `🔥 VIRAL hype at ${(asset.hype * 100).toFixed(0)}% · fades in ~${decayTicks} ticks — ride it now`;
+  if (asset.hype > 0.75 && asset.momentum < -0.005)
+    return `⚠️ Peak hype passing — momentum turned negative. Exit window closing`;
+  if (asset.hype > 0.45 && asset.hypeDecay < 0.95)
+    return `🔥 Hype at ${(asset.hype * 100).toFixed(0)}%, fading fast (~${decayTicks} ticks) — trade the spike`;
+  if (asset.hype > 0.45)
+    return `🔥 Hype at ${(asset.hype * 100).toFixed(0)}% with slow decay — medium-term tailwind`;
+
+  // Priority 3: strong momentum
+  if (asset.momentum > 0.02)
+    return `🚀 Strong uptrend active (${(asset.momentum * 100).toFixed(2)}%) — trend continuation likely`;
+  if (asset.momentum < -0.02)
+    return `☠️ Sharp decline in progress — wait for reversal before entering`;
+
+  // Priority 4: carrying cost bleed
+  if (asset.carryingCost > 0 && asset.hype < 0.2 && asset.momentum < 0) {
+    const dailyBleed = (asset.carryingCost * 60 * 100).toFixed(2);
+    return `💸 Bleeding ~${dailyBleed}%/day with no catalyst — consider exiting`;
+  }
+
+  // Priority 5: stable blue chip
+  if (asset.stability > 0.65 && asset.trend > 0)
+    return `🛡 Steady climber — safe accumulation. No timing needed`;
+
+  // Priority 6: falling momentum
+  if (asset.momentum < -0.008)
+    return `📉 Negative momentum building — price falling. Watch for reversal`;
+
+  return `📊 No strong signal — monitor for momentum or hype changes`;
+}
+
+// ── Concrete volatility profile (shown in insight panel) ─────────────────────
+
+export function getConcreteVolatilityInfo(asset: Asset): string {
+  const { risk, stability, carryingCost } = asset;
+  const parts: string[] = [];
+
+  if (risk > 0.01) {
+    const ticksPerShock = Math.round(1 / (risk * 0.012));
+    const shockMag      = Math.round((0.10 + risk * 0.175) * 100);
+    parts.push(`⚡ Shock: ~1-in-${ticksPerShock} ticks · ±${shockMag}% when it fires`);
+  } else {
+    parts.push(`✅ Near-zero shock risk`);
+  }
+
+  if (stability > 0.4) {
+    const cushion = Math.round(stability * 55);
+    parts.push(`🛡 Downside cushioned ${cushion}% by stability`);
+  }
+
+  if (carryingCost > 0) {
+    const dailyCost = (carryingCost * 60 * 100).toFixed(3);
+    parts.push(`💸 Costs ~${dailyCost}%/day to hold with no price movement`);
+  }
+
+  return parts.join('\n');
+}
+
+// ── Archetype playbook (how to trade this asset) ─────────────────────────────
+
+export function getArchetypePlaybook(asset: Asset): string {
+  const { carryingCost, stability, risk, hypeDecay, trend } = asset;
+
+  if (carryingCost > 0.0001 && stability < 0.15 && risk > 0.7)
+    return 'Only enter when a news catalyst is pending. Exit the same day. Holding bleeds value passively even when flat.';
+  if (stability > 0.65 && risk < 0.15)
+    return 'Buy and hold. Only sell to rotate into a clearly better opportunity. Boring = consistently profitable.';
+  if (hypeDecay < 0.95)
+    return 'Buy on hype spike, sell before hype drops below 30%. Never hold when cold — timing is everything here.';
+  if (hypeDecay < 0.98 && trend < 0)
+    return 'Trade hype cycles only. Holding long-term loses money due to negative trend. Enter rising, exit before peak fades.';
+  if (risk > 0.6 && stability > 0.2)
+    return 'Size your position small — big shocks are frequent. Adds high upside potential but expect violent drawdowns.';
+  if (trend > 0.004)
+    return 'Steady momentum with patience. Enter on dips and hold through minor shocks. The trend works for you.';
+  return 'Watch momentum and hype. Enter on rising trend or hype, exit on reversal signs.';
+}
+
+// ── Best opportunity + worst hold ─────────────────────────────────────────────
+
+export interface OpportunityResult {
+  asset: Asset;
+  reason: string;
+}
+
+export function getBestOpportunity(assets: Asset[], activeNews: NewsItem[]): OpportunityResult | null {
+  if (assets.length === 0) return null;
+  const pendingIds = new Set(activeNews.map(n => n.targetAssetId));
+
+  let bestScore = -Infinity;
+  let bestAsset: Asset | null = null;
+
+  for (const asset of assets) {
+    let score = 0;
+    score += asset.momentum * 150;
+    score += asset.hype * 1.2;
+    score += asset.stability * 0.5;
+    score -= asset.carryingCost * 60 * 100 * 3;
+    score += asset.trend * 300;
+    if (pendingIds.has(asset.id)) score += 1.5;
+    if (asset.momentum < -0.01) score -= 2;
+
+    if (score > bestScore) { bestScore = score; bestAsset = asset; }
+  }
+
+  if (!bestAsset) return null;
+
+  const a = bestAsset;
+  let reason: string;
+  if (a.momentum > 0.015 && a.hype > 0.4)  reason = 'Momentum + hype aligned';
+  else if (a.momentum > 0.015)              reason = 'Strong upward momentum';
+  else if (pendingIds.has(a.id))            reason = 'News catalyst pending';
+  else if (a.hype > 0.6)                   reason = 'High hype phase';
+  else if (a.stability > 0.65)             reason = 'Safe steady climber';
+  else if (a.trend > 0.004)               reason = 'Strong positive trend';
+  else                                     reason = 'Best available signal';
+
+  return { asset: bestAsset, reason };
+}
+
+export function getWorstHold(ownedAssets: Asset[]): OpportunityResult | null {
+  const candidates = ownedAssets.filter(a => a.momentum < -0.01 || (a.carryingCost > 0 && a.hype < 0.2));
+  if (candidates.length === 0) return null;
+
+  let worstScore = Infinity;
+  let worstAsset: Asset | null = null;
+
+  for (const asset of candidates) {
+    let score = asset.momentum * 100;
+    score -= asset.carryingCost * 60 * 100 * 5;
+    if (asset.hype < 0.15) score -= 0.5;
+    if (asset.trend < 0)   score -= 0.5;
+    if (score < worstScore) { worstScore = score; worstAsset = asset; }
+  }
+
+  if (!worstAsset) return null;
+
+  const a = worstAsset;
+  let reason: string;
+  if (a.momentum < -0.02)                     reason = 'Sharp decline in progress';
+  else if (a.carryingCost > 0 && a.hype < 0.15) reason = 'Bleeding daily with no catalyst';
+  else if (a.momentum < -0.01)                reason = 'Negative momentum building';
+  else                                         reason = 'Weak position';
+
+  return { asset: worstAsset, reason };
 }

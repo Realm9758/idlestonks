@@ -15,6 +15,9 @@ import {
   formatCurrency, formatPct, timeAgo, createEl,
   getInsightText, getMomentumArrow, getSignalLabel,
   getStockTags, getRecommendedPlay, getOpportunityScore, getTimingAdvice, getRiskWarning,
+  getStorySentence, getConcreteVolatilityInfo, getArchetypePlaybook,
+  getBestOpportunity, getWorstHold,
+  SECTORS, SECTOR_ORDER, SECTOR_MAP, CORRELATED_PAIRS,
 } from './components.ts';
 import { flashPrice, spawnFloatingText, pulseElement, sweepRow, spawnBuyParticles, spawnCashDelta } from './animations.ts';
 
@@ -227,6 +230,19 @@ export class Renderer {
         <h2>Available Stonks</h2>
         <span id="market-asset-count" class="panel-sub"></span>
       </div>
+      <div id="market-opportunity-bar" class="opportunity-bar hidden">
+        <div class="opp-entry opp-entry-buy">
+          <span class="opp-label">🚀 BEST ENTRY</span>
+          <span id="opp-best-name" class="opp-asset-name"></span>
+          <span id="opp-best-reason" class="opp-reason"></span>
+        </div>
+        <div class="opp-divider"></div>
+        <div class="opp-entry opp-entry-warn hidden" id="opp-warn-entry">
+          <span class="opp-label">⚠️ WATCH</span>
+          <span id="opp-warn-name" class="opp-asset-name"></span>
+          <span id="opp-warn-reason" class="opp-reason"></span>
+        </div>
+      </div>
       <div id="asset-list"></div>
     </div>
 
@@ -404,6 +420,16 @@ export class Renderer {
     <div class="ip-section">
       <div class="ip-section-label">TIMING</div>
       <div id="ip-timing" class="ip-timing tim-neutral">—</div>
+    </div>
+
+    <div class="ip-section">
+      <div class="ip-section-label">HOW TO TRADE</div>
+      <div id="ip-playbook" class="ip-playbook-text"></div>
+    </div>
+
+    <div class="ip-section">
+      <div class="ip-section-label">VOLATILITY PROFILE</div>
+      <div id="ip-vol-profile" class="ip-vol-text"></div>
     </div>
 
     <div id="ip-risk-warn-row" class="ip-section hidden">
@@ -590,8 +616,22 @@ export class Renderer {
     if (unlocked.length !== this.lastUnlockedCount) {
       this.lastUnlockedCount = unlocked.length;
       container.innerHTML = '';
-      for (const asset of unlocked) container.appendChild(this.buildAssetRow(asset));
+      // Group by sector with headers
+      for (const sectorId of SECTOR_ORDER) {
+        const sectorAssets = unlocked.filter(a => SECTOR_MAP[a.id] === sectorId);
+        if (sectorAssets.length === 0) continue;
+        const def = SECTORS.find(s => s.id === sectorId)!;
+        const hdr = createEl('div', 'sector-header');
+        hdr.innerHTML = `<span class="sector-emoji">${def.emoji}</span><span class="sector-label">${def.label}</span><span class="sector-desc">${def.description}</span>`;
+        container.appendChild(hdr);
+        for (const asset of sectorAssets) container.appendChild(this.buildAssetRow(asset));
+      }
+      // Fallback: assets not in any sector
+      const mapped = new Set(SECTOR_ORDER.flatMap(sid => unlocked.filter(a => SECTOR_MAP[a.id] === sid).map(a => a.id)));
+      for (const asset of unlocked.filter(a => !mapped.has(a.id))) container.appendChild(this.buildAssetRow(asset));
     }
+
+    const activeNews = this.storedNewsSystem?.getActive() ?? [];
 
     for (const asset of unlocked) {
       const row = container.querySelector(`[data-id="${asset.id}"]`) as HTMLElement | null;
@@ -629,6 +669,23 @@ export class Renderer {
         if (tagsEl.innerHTML !== newHtml) tagsEl.innerHTML = newHtml;
       }
 
+      // ── Story sentence ────────────────────────────────────────────────
+      const storyEl = row.querySelector<HTMLElement>('.asset-story');
+      if (storyEl) {
+        const story = getStorySentence(asset, activeNews, day);
+        if (storyEl.textContent !== story) storyEl.textContent = story;
+        // Style based on urgency
+        const isNews    = story.includes('News resolves');
+        const isHype    = story.startsWith('🔥');
+        const isBad     = story.startsWith('☠️') || story.startsWith('💸') || story.startsWith('⚠️');
+        const isSurging = story.startsWith('🚀');
+        storyEl.className = 'asset-story' +
+          (isNews    ? ' story-news'    : '') +
+          (isHype    ? ' story-hype'    : '') +
+          (isBad     ? ' story-bad'     : '') +
+          (isSurging ? ' story-surge'   : '');
+      }
+
       // ── Risk flicker + hype glow (CSS-driven, just toggle classes) ─────
       row.classList.toggle('risk-high', asset.risk > 0.68);
       row.classList.toggle('hype-high', asset.hype > 0.65);
@@ -660,21 +717,62 @@ export class Renderer {
       const ownedEl = row.querySelector('.asset-owned') as HTMLElement;
       ownedEl.textContent = asset.owned > 0 ? `Own: ${asset.owned}` : '';
 
-      // ── Chain / news line ──────────────────────────────────────────────────
+      // ── News line — all pending news (chain first, then regular) ──────────
       const newsLine = row.querySelector<HTMLElement>('.asset-news-line');
-      if (newsLine && this.storedNewsSystem) {
-        const chainNews = this.storedNewsSystem.getActive()
-          .filter(n => n.targetAssetId === asset.id && n.chainInfo);
-        if (chainNews.length > 0) {
-          const cn = chainNews[0];
-          const ci = cn.chainInfo!;
-          const daysLeft = cn.triggerDay - day;
-          const dayStr = daysLeft <= 1 ? 'today' : `${daysLeft}d`;
-          newsLine.textContent = `🔗 ${ci.chainTitle} (${ci.stepIndex + 1}/${ci.totalSteps}): "${cn.headline}" — ${dayStr}`;
+      if (newsLine) {
+        const allNews = activeNews.filter(n => n.targetAssetId === asset.id);
+        const chainNews = allNews.filter(n => n.chainInfo);
+        const displayNews = chainNews.length > 0 ? chainNews : allNews;
+        if (displayNews.length > 0) {
+          const n = displayNews[0];
+          const daysLeft = n.triggerDay - day;
+          const dayStr   = daysLeft <= 1 ? 'today' : `${daysLeft}d`;
+          const sDir = n.successMult >= 1 ? `+${((n.successMult - 1) * 100).toFixed(0)}%` : `-${((1 - n.successMult) * 100).toFixed(0)}%`;
+          const fDir = n.failMult   >= 1 ? `+${((n.failMult   - 1) * 100).toFixed(0)}%` : `-${((1 - n.failMult)   * 100).toFixed(0)}%`;
+          const prefix = n.chainInfo
+            ? `🔗 ${n.chainInfo.chainTitle} (${n.chainInfo.stepIndex + 1}/${n.chainInfo.totalSteps}): `
+            : '📰 ';
+          newsLine.textContent = `${prefix}Resolves ${dayStr} · ✅ ${sDir} · ❌ ${fDir}`;
           newsLine.classList.remove('hidden');
         } else {
           newsLine.classList.add('hidden');
         }
+      }
+    }
+
+    this.updateOpportunityBar(market);
+  }
+
+  private updateOpportunityBar(market: Market): void {
+    const bar = document.getElementById('market-opportunity-bar');
+    if (!bar) return;
+
+    const unlocked   = market.getUnlockedAssets();
+    const activeNews = this.storedNewsSystem?.getActive() ?? [];
+
+    const best  = getBestOpportunity(unlocked, activeNews);
+    const worst = getWorstHold(unlocked.filter(a => a.owned > 0));
+
+    const bestNameEl   = document.getElementById('opp-best-name');
+    const bestReasonEl = document.getElementById('opp-best-reason');
+    if (best && bestNameEl && bestReasonEl) {
+      bestNameEl.textContent   = `${best.asset.emoji} ${best.asset.name}`;
+      bestReasonEl.textContent = best.reason;
+      bar.classList.remove('hidden');
+    }
+
+    const warnEntry   = document.getElementById('opp-warn-entry');
+    const warnNameEl  = document.getElementById('opp-warn-name');
+    const warnReason  = document.getElementById('opp-warn-reason');
+    if (warnEntry && warnNameEl && warnReason) {
+      if (worst) {
+        warnNameEl.textContent  = `${worst.asset.emoji} ${worst.asset.name}`;
+        warnReason.textContent  = worst.reason;
+        warnEntry.classList.remove('hidden');
+        (bar.querySelector('.opp-divider') as HTMLElement | null)?.classList.remove('hidden');
+      } else {
+        warnEntry.classList.add('hidden');
+        (bar.querySelector('.opp-divider') as HTMLElement | null)?.classList.add('hidden');
       }
     }
   }
@@ -700,6 +798,7 @@ export class Renderer {
               <span class="stat-badge sl-muted ind-signal-badge">— —</span>
             </div>
             <div class="asset-tags"></div>
+            <div class="asset-story"></div>
             <div class="asset-news-line hidden"></div>
           </div>
         </div>
@@ -771,12 +870,12 @@ export class Renderer {
   }
 
   private buildSparklineSvg(history: number[]): string {
-    const pts = history.slice(-16);
+    const pts = history.slice(-60);
     if (pts.length < 2) return '';
     const min = Math.min(...pts);
     const max = Math.max(...pts);
     const range = max - min || min * 0.01 || 1;
-    const W = 72; const H = 28;
+    const W = 96; const H = 28;
     const points = pts.map((p, i) => {
       const x = (i / (pts.length - 1)) * W;
       const y = H - ((p - min) / range) * (H - 4) - 2;
