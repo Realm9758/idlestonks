@@ -77,6 +77,19 @@ export class Market {
     }
   }
 
+  getFearGreedIndex(): number {
+    const unlocked = this.getUnlockedAssets();
+    if (unlocked.length === 0) return 50;
+    const avgHype = unlocked.reduce((s, a) => s + a.hype, 0) / unlocked.length;
+    const avgMom  = unlocked.reduce((s, a) => s + a.momentum, 0) / unlocked.length;
+    const avgTrend = unlocked.reduce((s, a) => s + a.trend, 0) / unlocked.length;
+    let score = 50;
+    score += avgHype * 30;
+    score += (avgMom / 0.05) * 20;
+    score += (avgTrend / 0.006) * 10;
+    return Math.min(100, Math.max(0, Math.round(score)));
+  }
+
   loadPrices(prices: Record<string, number>, ownedAmounts: Record<string, number>): void {
     for (const [id, price] of Object.entries(prices)) {
       const asset = this.assets.get(id);

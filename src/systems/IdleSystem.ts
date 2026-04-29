@@ -9,12 +9,16 @@ import type { BlackMarketSystem } from './BlackMarketSystem.ts';
 import type { InvestorSystem } from './InvestorSystem.ts';
 import type { HedgeFundSystem } from './HedgeFundSystem.ts';
 
+export type EventChoice = 'bail' | 'hedge' | 'double' | 'watch';
+
 export interface IdleCallbacks {
   onTick: (tick: number, day: number, secondsInDay: number, secondsPerDay: number) => void;
   onEvent: (entry: EventLogEntry) => void;
   onUnlock: (name: string) => void;
   onNewsGenerated?: (item: NewsItem) => void;
   onNewsResolved?: (resolution: NewsResolution) => void;
+  onEventPreChoice?: (hint: string) => void;
+  onLimitOrderFilled?: (message: string) => void;
 }
 
 export class IdleSystem {
@@ -25,6 +29,9 @@ export class IdleSystem {
   private running    = false;
   private intervalId: ReturnType<typeof setInterval> | null = null;
   private autoTraderTimer = 0;
+
+  private pendingEventChoice: EventChoice = 'watch';
+  private lastSeenEventDays = -1;
 
   constructor(
     private readonly market: Market,
@@ -39,6 +46,10 @@ export class IdleSystem {
     private readonly investorSystem?: InvestorSystem,
     private readonly hedgeFundSystem?: HedgeFundSystem,
   ) {}
+
+  resolveEventChoice(choice: EventChoice): void {
+    this.pendingEventChoice = choice;
+  }
 
   start(): void {
     if (this.running) return;
@@ -58,14 +69,12 @@ export class IdleSystem {
     this.tickCount++;
     this.secondsInDay++;
 
-    // ── Prices update every second ─────────────────────────────────────────
     this.market.tick();
 
     const netWorth = this.player.getNetWorth(this.market);
     const newlyUnlocked = this.market.checkUnlocks(netWorth);
     for (const name of newlyUnlocked) this.callbacks.onUnlock(name);
 
-    // Investor passive income
     if (this.investorSystem) {
       const investorBonus = this.investorSystem.computeIncome(netWorth);
       if (investorBonus > 0) {
@@ -74,7 +83,6 @@ export class IdleSystem {
       }
     }
 
-    // Auto trader — leveled behavior
     const traderLevel = this.upgradeSystem.getBotLevel();
     if (traderLevel > 0) {
       this.autoTraderTimer++;
@@ -86,14 +94,18 @@ export class IdleSystem {
       }
     }
 
-    // ── Day boundary ───────────────────────────────────────────────────────
+    // ── Limit orders check (every tick) ───────────────────────────────────
+    const { messages } = this.player.checkLimitOrders(this.market);
+    for (const msg of messages) {
+      this.callbacks.onLimitOrderFilled?.(msg);
+    }
+
     if (this.secondsInDay >= this.secondsPerDay) {
       this.secondsInDay = 0;
       this.dayCount++;
       this.fireDayEvents();
     }
 
-    // Auto-save every 5 ticks
     this.saveSystem.tick(
       this.player, this.market, this.upgradeSystem, this,
       this.newsSystem, this.rankSystem, this.blackMarketSystem, this.investorSystem,
@@ -104,12 +116,47 @@ export class IdleSystem {
   }
 
   private fireDayEvents(): void {
-    // Chaos events + drift + pre-signal tease
+    const prevEventDays = this.eventSystem.getNextEventInDays();
+
+    // Apply pending event choice BEFORE event fires
+    if (prevEventDays <= 1) {
+      const choice = this.pendingEventChoice;
+      this.pendingEventChoice = 'watch';
+
+      if (choice === 'bail') {
+        for (const asset of this.market.getAllAssets()) {
+          if (asset.owned > 0) this.player.sell(asset.id, asset.owned, this.market);
+        }
+        this.callbacks.onEvent(this.eventSystem.addEntry('🏃 Bail! All positions sold before the event.', 'neutral'));
+      } else if (choice === 'hedge') {
+        if (this.player.cash >= 500) {
+          this.player.cash -= 500;
+          this.market.stabilise();
+        }
+        this.callbacks.onEvent(this.eventSystem.addEntry('🎚️ Hedged! Paid $500 to dampen market volatility.', 'neutral'));
+      } else if (choice === 'double') {
+        const result = this.player.yoloInvest(this.market);
+        if (result.success) {
+          this.callbacks.onEvent(this.eventSystem.addEntry(`💰 Doubled Down! ${result.message}`, 'good'));
+        }
+      }
+    }
+
     const hamster = this.upgradeSystem.getSignalIntelLevel() >= 3;
     const entries = this.eventSystem.dayTick(this.market, this.player, hamster);
     for (const entry of entries) this.callbacks.onEvent(entry);
 
-    // ── Dividend income from stable holdings ─────────────────────────────
+    const newEventDays = this.eventSystem.getNextEventInDays();
+
+    // Show choice modal when event moves to exactly 1 day away (preTease just fired)
+    if (newEventDays === 1 && prevEventDays >= 2 && newEventDays !== this.lastSeenEventDays) {
+      this.lastSeenEventDays = newEventDays;
+      this.callbacks.onEventPreChoice?.(this.eventSystem.getHintText());
+    } else if (newEventDays !== 1) {
+      this.lastSeenEventDays = newEventDays;
+    }
+
+    // Dividend income
     let totalDividend = 0;
     for (const asset of this.market.getAllAssets()) {
       const d = asset.getDailyDividend();
@@ -131,7 +178,6 @@ export class IdleSystem {
       });
     }
 
-    // News generation + resolution
     if (this.newsSystem) {
       const newItem = this.newsSystem.generateIfDue(this.market, this.dayCount);
       if (newItem) this.callbacks.onNewsGenerated?.(newItem);
@@ -148,7 +194,6 @@ export class IdleSystem {
     const unlocked = this.market.getUnlockedAssets();
 
     if (level >= 3 && this.newsSystem) {
-      // News-aware: prefer hyped assets during active events
       const hyped = unlocked.filter(a => a.hype > 0.5 && a.price <= budget);
       if (hyped.length > 0) {
         hyped.sort((a, b) => b.hype - a.hype);
@@ -158,7 +203,6 @@ export class IdleSystem {
     }
 
     if (level >= 2) {
-      // Momentum-based: buy highest positive momentum
       const momentum = unlocked.filter(a => a.momentum > 0 && a.price <= budget);
       if (momentum.length > 0) {
         momentum.sort((a, b) => b.momentum - a.momentum);
@@ -167,12 +211,9 @@ export class IdleSystem {
       }
     }
 
-    // Level 1: cheapest affordable
     const affordable = unlocked.filter(a => a.price <= budget).sort((a, b) => a.price - b.price);
     if (affordable.length > 0) this.player.buy(affordable[0].id, 1, this.market);
   }
-
-  // ── Time controls ──────────────────────────────────────────────────────
 
   applyTimeWarp(): void { this.secondsPerDay = 30; }
 
@@ -189,8 +230,6 @@ export class IdleSystem {
     this.callbacks.onTick(this.tickCount, this.dayCount, this.secondsInDay, this.secondsPerDay);
     return true;
   }
-
-  // ── Accessors ──────────────────────────────────────────────────────────
 
   getTick(): number        { return this.tickCount; }
   getDayCount(): number    { return this.dayCount; }

@@ -39,6 +39,8 @@ export interface RenderCallbacks {
   onSetCash: (amount: number) => void;
   onBuyLeveledUpgrade: (id: string) => void;
   onHireInvestor: (tierId: string) => void;
+  onAddLimitOrder: (assetId: string, type: 'buy' | 'sell', triggerPrice: number, quantity: number) => void;
+  onCancelLimitOrder: (orderId: string) => void;
 }
 
 interface Toast { el: HTMLElement; removeAt: number; }
@@ -100,6 +102,15 @@ export class Renderer {
   // Upgrades tab change detection
   private lastUpgradeKey = '';
   private lastInvestorKey = '';
+
+  // Event choice modal
+  private eventChoiceTimerId: ReturnType<typeof setInterval> | null = null;
+
+  // Limit order panel state: which asset id has the panel open
+  private openLimitOrderId: string | null = null;
+
+  // Cached player reference for limit order display
+  private storedPlayer: Player | null = null;
 
 
   // News change-detection
@@ -171,6 +182,10 @@ export class Renderer {
         <span class="stat-label">⭐ Multiplier</span>
         <span id="stat-multiplier" class="stat-value gold">×1</span>
       </div>
+      <div class="stat-block hidden" id="streak-block">
+        <span class="stat-label">🔥 Streak</span>
+        <span id="stat-streak" class="stat-value streak-val">0×</span>
+      </div>
     </div>
     <div class="header-actions">
       <button id="btn-intel" class="btn btn-intel">📊 Market Intel</button>
@@ -229,6 +244,14 @@ export class Renderer {
       <div class="panel-header">
         <h2>Available Stonks</h2>
         <span id="market-asset-count" class="panel-sub"></span>
+      </div>
+      <div id="fear-greed-bar" class="fear-greed-bar">
+        <span class="fg-label fg-fear">😱 FEAR</span>
+        <div class="fg-track">
+          <div id="fg-fill" class="fg-fill" style="width:50%"></div>
+        </div>
+        <span class="fg-label fg-greed">🤑 GREED</span>
+        <span id="fg-zone" class="fg-zone fg-neutral">NEUTRAL · 50</span>
       </div>
       <div id="market-opportunity-bar" class="opportunity-bar hidden">
         <div class="opp-entry opp-entry-buy">
@@ -369,6 +392,48 @@ export class Renderer {
         <button id="news-page-close" class="btn-icon">✕</button>
       </div>
       <div id="np-feed" class="np-feed"></div>
+    </div>
+  </div>
+
+  <!-- Event choice modal -->
+  <div id="event-choice-overlay" class="hidden">
+    <div id="event-choice-modal" class="event-choice-modal">
+      <div class="ecm-header">
+        <div class="ecm-header-left">
+          <span class="ecm-icon">⚡</span>
+          <div>
+            <div class="ecm-title">EVENT INCOMING TOMORROW</div>
+            <div id="ecm-hint" class="ecm-hint"></div>
+          </div>
+        </div>
+        <div class="ecm-timer-wrap">
+          <div id="ecm-timer" class="ecm-timer">12</div>
+          <div class="ecm-timer-label">sec</div>
+        </div>
+      </div>
+      <p class="ecm-desc">You got intel early. Choose your move before it fires:</p>
+      <div class="ecm-choices">
+        <button class="btn ecm-btn ecm-bail" id="ecm-bail">
+          <span class="ecm-btn-icon">🏃</span>
+          <span class="ecm-btn-label">BAIL OUT</span>
+          <span class="ecm-btn-sub">Sell all positions now</span>
+        </button>
+        <button class="btn ecm-btn ecm-hedge" id="ecm-hedge">
+          <span class="ecm-btn-icon">🎚️</span>
+          <span class="ecm-btn-label">HEDGE</span>
+          <span class="ecm-btn-sub">Pay $500 — dampen volatility</span>
+        </button>
+        <button class="btn ecm-btn ecm-double" id="ecm-double">
+          <span class="ecm-btn-icon">💰</span>
+          <span class="ecm-btn-label">DOUBLE DOWN</span>
+          <span class="ecm-btn-sub">YOLO into the market now</span>
+        </button>
+        <button class="btn ecm-btn ecm-watch" id="ecm-watch">
+          <span class="ecm-btn-icon">👀</span>
+          <span class="ecm-btn-label">WATCH</span>
+          <span class="ecm-btn-sub">Do nothing — let it play out</span>
+        </button>
+      </div>
     </div>
   </div>
 
@@ -553,12 +618,15 @@ export class Renderer {
     if (newsSystem) this.storedNewsSystem = newsSystem;
     if (rankSystem) this.storedRankSystem = rankSystem;
     if (investorSystem) this.storedInvestorSystem = investorSystem;
+    this.storedPlayer = player;
     this.currentDay = day;
     this.currentSecInDay = secondsInDay;
     this.currentSecPerDay = secondsPerDay;
     this.updateHeader(player, market, upgradeSystem, day);
     this.updateMarket(market, player, upgradeSystem, day);
     this.updatePortfolio(market, player);
+    this.updateFearGreed(market);
+    this.updateStreak(player);
     this.updateNews(newsSystem, day, secondsInDay, secondsPerDay);
     this.updateEvents(eventSystem, upgradeSystem, day, secondsInDay, secondsPerDay);
     this.updateUpgradesTab(upgradeSystem, player, market);
@@ -763,6 +831,29 @@ export class Renderer {
           newsLine.classList.add('hidden');
         }
       }
+
+      // ── Active limit orders display ─────────────────────────────────────
+      const orderList = row.querySelector<HTMLElement>(`[data-lo-list="${asset.id}"]`);
+      if (orderList && this.storedPlayer) {
+        const orders = this.storedPlayer.limitOrders.filter(o => o.assetId === asset.id);
+        const key = orders.map(o => o.id).join('|');
+        if (orderList.dataset.key !== key) {
+          orderList.dataset.key = key;
+          orderList.innerHTML = orders.length === 0 ? '' : orders.map(o => {
+            const dir = o.type === 'buy' ? '≤' : '≥';
+            const label = o.type === 'buy' ? 'BUY' : 'SELL';
+            return `<div class="lo-order-row">
+              <span class="lo-order-badge lo-${o.type}">${label}</span>
+              <span class="lo-order-detail">${o.quantity}× if ${dir} $${o.triggerPrice.toFixed(2)}</span>
+              <button class="lo-cancel" data-order-id="${o.id}">✕</button>
+            </div>`;
+          }).join('');
+          orderList.addEventListener('click', (e) => {
+            const btn = (e.target as HTMLElement).closest<HTMLElement>('.lo-cancel');
+            if (btn?.dataset.orderId) this.callbacks.onCancelLimitOrder(btn.dataset.orderId);
+          });
+        }
+      }
     }
 
     this.updateOpportunityBar(market);
@@ -801,6 +892,80 @@ export class Renderer {
       }
     }
   }
+
+  // ── Fear & Greed Index ────────────────────────────────────────────────────
+
+  private updateFearGreed(market: Market): void {
+    const score = market.getFearGreedIndex();
+    const fill  = document.getElementById('fg-fill');
+    const zone  = document.getElementById('fg-zone');
+    if (fill) fill.style.width = `${score}%`;
+    if (zone) {
+      let text: string; let cls: string;
+      if      (score >= 80) { text = `EXTREME GREED · ${score}`; cls = 'fg-extreme-greed'; }
+      else if (score >= 60) { text = `GREED · ${score}`;         cls = 'fg-greed'; }
+      else if (score >= 40) { text = `NEUTRAL · ${score}`;       cls = 'fg-neutral'; }
+      else if (score >= 20) { text = `FEAR · ${score}`;          cls = 'fg-fear'; }
+      else                  { text = `EXTREME FEAR · ${score}`;  cls = 'fg-extreme-fear'; }
+      zone.textContent = text;
+      zone.className   = `fg-zone ${cls}`;
+    }
+  }
+
+  // ── Trading streak badge ──────────────────────────────────────────────────
+
+  private updateStreak(player: Player): void {
+    const block = document.getElementById('streak-block');
+    const val   = document.getElementById('stat-streak');
+    if (!block || !val) return;
+    if (player.streak >= 1) {
+      block.classList.remove('hidden');
+      val.textContent = `${player.streak}×`;
+      val.className   = player.hotHandActive ? 'stat-value streak-hot' : 'stat-value streak-val';
+    } else {
+      block.classList.add('hidden');
+    }
+  }
+
+  // ── Event choice modal ────────────────────────────────────────────────────
+
+  showEventChoiceModal(hint: string, onChoose: (choice: string) => void): void {
+    if (this.eventChoiceTimerId !== null) {
+      clearInterval(this.eventChoiceTimerId);
+      this.eventChoiceTimerId = null;
+    }
+
+    const overlay  = document.getElementById('event-choice-overlay')!;
+    const hintEl   = document.getElementById('ecm-hint')!;
+    const timerEl  = document.getElementById('ecm-timer')!;
+    hintEl.textContent = hint;
+    overlay.classList.remove('hidden');
+
+    let seconds = 15;
+    timerEl.textContent = String(seconds);
+
+    const done = (choice: string) => {
+      if (this.eventChoiceTimerId !== null) {
+        clearInterval(this.eventChoiceTimerId);
+        this.eventChoiceTimerId = null;
+      }
+      overlay.classList.add('hidden');
+      onChoose(choice);
+    };
+
+    this.eventChoiceTimerId = setInterval(() => {
+      seconds--;
+      timerEl.textContent = String(seconds);
+      if (seconds <= 0) done('watch');
+    }, 1000);
+
+    document.getElementById('ecm-bail')!.onclick   = () => done('bail');
+    document.getElementById('ecm-hedge')!.onclick  = () => done('hedge');
+    document.getElementById('ecm-double')!.onclick = () => done('double');
+    document.getElementById('ecm-watch')!.onclick  = () => done('watch');
+  }
+
+  // ── Asset row builder ─────────────────────────────────────────────────────
 
   private buildAssetRow(asset: Asset): HTMLElement {
     const row = createEl('div', 'asset-row');
@@ -864,6 +1029,21 @@ export class Renderer {
         <button class="btn btn-max btn-sm">Max (0)</button>
         <button class="btn btn-sell-all btn-sm">All (0)</button>
         <button class="btn-analyse btn-icon" title="Analyse ${asset.name}">🔍</button>
+        <button class="btn-orders btn-icon" title="Limit orders">📋</button>
+      </div>
+      <div class="limit-order-panel hidden" data-lo-panel="${asset.id}">
+        <div class="lo-form-row">
+          <select class="lo-type">
+            <option value="buy">Buy if ≤</option>
+            <option value="sell">Sell if ≥</option>
+          </select>
+          <span class="lo-dollar">$</span>
+          <input class="lo-price" type="number" min="0.01" step="0.01" placeholder="price" />
+          <span class="lo-x">×</span>
+          <input class="lo-qty" type="number" min="1" step="1" value="1" placeholder="qty" />
+          <button class="btn btn-sm lo-set">Set Order</button>
+        </div>
+        <div class="lo-active-orders" data-lo-list="${asset.id}"></div>
       </div>
     `;
 
@@ -910,6 +1090,37 @@ export class Renderer {
       row.dispatchEvent(ev);
     });
 
+    row.querySelector('.btn-orders')!.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const panel = row.querySelector<HTMLElement>(`[data-lo-panel="${asset.id}"]`);
+      if (!panel) return;
+      const isOpen = !panel.classList.contains('hidden');
+      if (isOpen) {
+        panel.classList.add('hidden');
+        this.openLimitOrderId = null;
+      } else {
+        document.querySelectorAll<HTMLElement>('.limit-order-panel').forEach(p => p.classList.add('hidden'));
+        panel.classList.remove('hidden');
+        this.openLimitOrderId = asset.id;
+      }
+    });
+
+    row.querySelector('.lo-set')!.addEventListener('click', () => {
+      const typeEl = row.querySelector<HTMLSelectElement>('.lo-type')!;
+      const priceEl = row.querySelector<HTMLInputElement>('.lo-price')!;
+      const qtyEl = row.querySelector<HTMLInputElement>('.lo-qty')!;
+      const type = typeEl.value as 'buy' | 'sell';
+      const price = parseFloat(priceEl.value);
+      const qty = parseInt(qtyEl.value, 10);
+      if (isNaN(price) || price <= 0 || isNaN(qty) || qty <= 0) {
+        this.showToast('Invalid order — enter a valid price and quantity.', 'error');
+        return;
+      }
+      this.callbacks.onAddLimitOrder(asset.id, type, price, qty);
+      priceEl.value = '';
+      qtyEl.value = '1';
+    });
+
     return row;
   }
 
@@ -947,10 +1158,25 @@ export class Renderer {
   private updatePortfolio(market: Market, player?: Player): void {
     const container = document.getElementById('portfolio-list')!;
     const owned = market.getAllAssets().filter(a => a.owned > 0);
+    const totalVal = owned.reduce((s, a) => s + a.getValue(), 0);
+    document.getElementById('portfolio-total')!.textContent = formatCurrency(totalVal);
 
-    document.getElementById('portfolio-total')!.textContent = formatCurrency(
-      owned.reduce((s, a) => s + a.getValue(), 0),
-    );
+    // Diversification bonus badge
+    const divBonus = player ? player.getDiversificationBonus(market) : 1;
+    let divEl = document.getElementById('portfolio-div-bonus');
+    if (!divEl) {
+      divEl = createEl('span', 'div-bonus-badge');
+      divEl.id = 'portfolio-div-bonus';
+      const hdr = document.querySelector('#portfolio-panel .panel-header');
+      if (hdr) hdr.appendChild(divEl);
+    }
+    if (divBonus > 1) {
+      divEl.textContent = `🌈 +${((divBonus - 1) * 100).toFixed(0)}% Div Bonus`;
+      divEl.className = 'div-bonus-badge div-bonus-active';
+    } else {
+      divEl.textContent = `Hold 3+ assets for sell bonus`;
+      divEl.className = 'div-bonus-badge div-bonus-hint';
+    }
 
     if (owned.length === 0) {
       container.innerHTML = '<p class="empty-msg">No positions yet. Buy something!</p>';

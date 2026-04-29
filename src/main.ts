@@ -220,6 +220,18 @@ const idleSystem = new IdleSystem(
       if (resolution.severity === 'bad') { screenFlash('bad'); screenShake('light'); }
       else if (resolution.severity === 'good') screenFlash('good');
     },
+
+    onEventPreChoice(hint) {
+      renderer.showEventChoiceModal(hint, (choice) => {
+        idleSystem.resolveEventChoice(choice as 'bail' | 'hedge' | 'double' | 'watch');
+      });
+    },
+
+    onLimitOrderFilled(message) {
+      renderer.showToast(message, 'success');
+      soundSystem.play('profit');
+      eventSystem.addEntry(message, 'good');
+    },
   },
   newsSystem,
   rankSystem,
@@ -420,6 +432,17 @@ const renderer = new Renderer({
       player.cash = result.newCash;
       eventSystem.addEntry(result.message, 'good');
     }
+  },
+
+  onAddLimitOrder(assetId: string, type: 'buy' | 'sell', triggerPrice: number, quantity: number) {
+    player.addLimitOrder(assetId, type, triggerPrice, quantity);
+    const asset = market.getAsset(assetId);
+    const dir = type === 'buy' ? '≤' : '≥';
+    renderer.showToast(`📋 Order set: ${type === 'buy' ? 'Buy' : 'Sell'} ${quantity}× ${asset?.emoji ?? ''} if price ${dir} $${triggerPrice.toFixed(2)}`, 'info');
+  },
+
+  onCancelLimitOrder(orderId: string) {
+    player.cancelLimitOrder(orderId);
   },
 });
 
