@@ -16,7 +16,7 @@ import {
   getInsightText, getMomentumArrow, getSignalLabel,
   getStockTags, getRecommendedPlay, getOpportunityScore, getTimingAdvice, getRiskWarning,
   getStorySentence, getConcreteVolatilityInfo, getArchetypePlaybook,
-  getBestOpportunity, getWorstHold,
+  getBestOpportunity, getWorstHold, getTimingWindow,
   SECTORS, SECTOR_ORDER, SECTOR_MAP, CORRELATED_PAIRS,
 } from './components.ts';
 import { flashPrice, spawnFloatingText, pulseElement, sweepRow, spawnBuyParticles, spawnCashDelta } from './animations.ts';
@@ -662,6 +662,31 @@ export class Renderer {
       const sigBadge = row.querySelector('.ind-signal-badge') as HTMLElement | null;
       if (sigBadge) { sigBadge.textContent = sig.text; sigBadge.className = `stat-badge ${sig.cls} ind-signal-badge`; }
 
+      // ── Hype bar ───────────────────────────────────────────────────────
+      const hypeBarFill  = row.querySelector<HTMLElement>('.hype-bar-fill');
+      const hypeBarLabel = row.querySelector<HTMLElement>('.hype-bar-label');
+      if (hypeBarFill && hypeBarLabel) {
+        const pct = Math.min(100, Math.round(asset.hype * 100));
+        hypeBarFill.style.width = `${pct}%`;
+        const fillCls = asset.hype > 0.75 ? 'hype-fill-viral'
+                      : asset.hype > 0.45 ? 'hype-fill-high'
+                      : asset.hype > 0.20 ? 'hype-fill-med'
+                      : 'hype-fill-cold';
+        hypeBarFill.className = `hype-bar-fill ${fillCls}`;
+        hypeBarLabel.textContent = `HYPE ${pct}%`;
+      }
+
+      // ── Timing window ──────────────────────────────────────────────────
+      const timingEl = row.querySelector<HTMLElement>('.asset-timing');
+      if (timingEl) {
+        const tw = getTimingWindow(asset);
+        if (timingEl.dataset.tw !== tw.cls) {
+          timingEl.dataset.tw = tw.cls;
+          timingEl.textContent = tw.text;
+          timingEl.className = `asset-timing ${tw.cls}`;
+        }
+      }
+
       // ── Stock tags ─────────────────────────────────────────────────────
       const tagsEl = row.querySelector('.asset-tags') as HTMLElement | null;
       if (tagsEl) {
@@ -784,6 +809,13 @@ export class Renderer {
     // Derive short ticker from id (e.g. catcoin → CAT)
     const ticker = asset.id.replace(/_/g, '').slice(0, 4).toUpperCase();
 
+    const divBadge = asset.dividendRate > 0
+      ? `<span class="asset-div-badge">💰 ${(asset.dividendRate * 100).toFixed(2)}%/day</span>`
+      : '';
+    const bleedBadge = asset.carryingCost > 0
+      ? `<span class="asset-bleed-badge">💸 ${(asset.carryingCost * 60 * 100).toFixed(2)}%/day cost</span>`
+      : '';
+
     row.innerHTML = `
       <div class="asset-card-top">
         <div class="asset-left">
@@ -794,6 +826,18 @@ export class Renderer {
               <span class="asset-ticker">${ticker}</span>
               <span class="asset-trend hidden"></span>
             </div>
+            <div class="asset-archetype-row">
+              <span class="asset-archetype ${asset.archetypeClass}">${asset.archetype}</span>
+              ${divBadge}${bleedBadge}
+            </div>
+            <div class="asset-buy-reason">${asset.buyReason}</div>
+            <div class="asset-hype-row">
+              <div class="hype-bar-track">
+                <div class="hype-bar-fill hype-fill-cold" style="width:0%"></div>
+              </div>
+              <span class="hype-bar-label">HYPE 0%</span>
+            </div>
+            <div class="asset-timing tw-neutral">⏳ WATCHING</div>
             <div class="asset-badge-row">
               <span class="stat-badge sl-muted ind-signal-badge">— —</span>
             </div>

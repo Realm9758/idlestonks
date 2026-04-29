@@ -13,6 +13,11 @@ export interface AssetConfig {
   trend: number;
   unlockThreshold: number;
   description: string;
+  // Archetype identity
+  archetype: string;      // 'HYPE RIDER' | 'BLUE CHIP' | 'CHAOS' | 'BLENDED' | 'STEADY HOLD' | 'HIGH RISK'
+  archetypeClass: string; // CSS class for the archetype badge colour
+  buyReason: string;      // 1-line strategic reason shown permanently on the card
+  dividendRate?: number;  // daily fraction of held value paid as cash (e.g. 0.0015 = 0.15 %/day)
   // Fundamentals
   hype: number;        // 0–1  social/media buzz; decays over time
   stability: number;   // 0–1  resistance to crashes; static
@@ -28,6 +33,10 @@ export class Asset {
   readonly basePrice: number;
   readonly unlockThreshold: number;
   readonly description: string;
+  readonly archetype: string;
+  readonly archetypeClass: string;
+  readonly buyReason: string;
+  readonly dividendRate: number;
   readonly stability: number;
   readonly risk: number;
   readonly hypeDecay: number;
@@ -54,6 +63,10 @@ export class Asset {
     this.trend = config.trend;
     this.unlockThreshold = config.unlockThreshold;
     this.description = config.description;
+    this.archetype = config.archetype;
+    this.archetypeClass = config.archetypeClass;
+    this.buyReason = config.buyReason;
+    this.dividendRate = config.dividendRate ?? 0;
     this.stability = config.stability;
     this.risk = config.risk;
     this.hypeDecay = config.hypeDecay;
@@ -79,17 +92,19 @@ export class Asset {
     const effectiveTrend = this.trend + this.trendBoost;
     const effectiveVolatility = this.volatility * this.volatilityMod * this.baseVolatilityMult;
 
-    // ── Fundamental component (~70% of movement) ────────────────────────
+    // ── Fundamental component (~76% of movement) ────────────────────────
+    // Hype now contributes 2.5× more so viral spikes are clearly visible.
+    // Momentum weight raised so trending stocks feel like they're trending.
     const fundamentalPct =
       effectiveTrend +
-      this.momentum * 0.5 +
-      this.hype * 0.004;
+      this.momentum * 0.6 +
+      this.hype * 0.010;
 
-    // ── Noise component (~30% of movement) ──────────────────────────────
+    // ── Noise component (~24% of movement) ──────────────────────────────
     const noiseRaw = (Math.random() - 0.5) * 2 * effectiveVolatility * (1 + this.risk * 0.8);
 
     // Blend: fundamentals steer direction, noise adds uncertainty
-    let pctChange = fundamentalPct * 0.7 + noiseRaw * 0.3;
+    let pctChange = fundamentalPct * 0.76 + noiseRaw * 0.24;
 
     // (C) Momentum mean-reversion: extreme runs pull back naturally
     if (Math.abs(this.momentum) > 0.025) {
@@ -131,6 +146,11 @@ export class Asset {
       total += (recent[i] - recent[i - 1]) / recent[i - 1];
     }
     return Math.max(-0.05, Math.min(0.05, total / (recent.length - 1)));
+  }
+
+  getDailyDividend(): number {
+    if (this.dividendRate <= 0 || this.owned <= 0) return 0;
+    return this.price * this.owned * this.dividendRate;
   }
 
   shock(multiplier: number): void {
@@ -194,58 +214,65 @@ export class Asset {
 
 export const ASSET_CONFIGS: AssetConfig[] = [
   {
-    // Hype rider: hype peaks hard after events, fades fast — buy the dip, sell the peak
     id: 'catcoin',
     name: 'CatCoin',
     emoji: '🐱',
     basePrice: 10,
     volatility: 0.04,
-    trend: 0.001,
+    trend: 0.0015,        // was 0.001 — scaled 1.5× so direction is perceptible
     hype: 0.55,
     stability: 0.25,
     risk: 0.35,
-    hypeDecay: 0.94,
+    hypeDecay: 0.94,      // fast decay: hype spikes hard then collapses
     unlockThreshold: 0,
     description: 'Meow. That\'s the whole whitepaper.',
+    archetype: 'HYPE RIDER',
+    archetypeClass: 'arch-hype',
+    buyReason: 'Buy before meme events. Hype spikes hard, fades fast — time your exit.',
   },
   {
-    // Value blend: moderate decay, catches event pumps without extreme crashes
     id: 'meme_etf',
     name: 'Meme ETF',
     emoji: '😂',
     basePrice: 25,
     volatility: 0.05,
-    trend: 0.002,
+    trend: 0.003,         // was 0.002
     hype: 0.50,
     stability: 0.30,
     risk: 0.40,
     hypeDecay: 0.975,
     unlockThreshold: 0,
     description: 'A diversified fund of pure internet nonsense.',
+    archetype: 'BLENDED',
+    archetypeClass: 'arch-blend',
+    buyReason: 'Balanced hype play. Catches most pumps with softer crashes. Pays tiny dividends.',
+    dividendRate: 0.0002, // 0.02 %/day — smallest dividend, just a nudge to hold
   },
   {
-    // Stable hold: slow hype decay, reliable trend — patient money
     id: 'ai_writes_ai',
     name: 'AI Writes AI',
     emoji: '🤖',
     basePrice: 50,
     volatility: 0.04,
-    trend: 0.003,
+    trend: 0.0045,        // was 0.003
     hype: 0.40,
     stability: 0.50,
     risk: 0.35,
-    hypeDecay: 0.995,
+    hypeDecay: 0.995,     // slow decay: hype events have lingering tailwind for days
     unlockThreshold: 0,
     description: 'An AI that writes AI that writes AI. Recursion = profit.',
+    archetype: 'STEADY HOLD',
+    archetypeClass: 'arch-steady',
+    buyReason: 'Buy and hold. Slow hype decay means events keep paying for days. Pays dividends.',
+    dividendRate: 0.0006, // 0.06 %/day
   },
   {
-    // Chaos gambler: carrying cost bleeds value when flat, explosive on events
     id: 'quantum_banana',
     name: 'Quantum Banana',
     emoji: '🍌',
     basePrice: 7,
     volatility: 0.07,
-    trend: -0.001,
+    trend: -0.0015,       // was -0.001
     hype: 0.20,
     stability: 0.10,
     risk: 0.80,
@@ -253,45 +280,51 @@ export const ASSET_CONFIGS: AssetConfig[] = [
     carryingCost: 0.000140,
     unlockThreshold: 0,
     description: 'Simultaneously ripe and rotten until someone checks.',
+    archetype: 'CHAOS',
+    archetypeClass: 'arch-chaos',
+    buyReason: 'Enter ONLY with a catalyst pending. Bleeds value daily with no event.',
   },
   {
-    // Hype rider with negative trend: must trade the hype cycles, holding is losing
     id: 'influencer_stock',
     name: 'Influencer Stock',
     emoji: '📸',
     basePrice: 30,
     volatility: 0.06,
-    trend: -0.001,
+    trend: -0.0015,       // was -0.001
     hype: 0.70,
     stability: 0.15,
     risk: 0.50,
-    hypeDecay: 0.93,
+    hypeDecay: 0.93,      // fastest hype decay — must sell the spike same-day
     unlockThreshold: 0,
     description: 'Value entirely based on vibes and follower count.',
+    archetype: 'HYPE RIDER',
+    archetypeClass: 'arch-hype',
+    buyReason: 'Event-trade only — negative trend means holding long-term is a losing strategy.',
   },
   {
-    // Value blend with high risk: big swings but can hold through them
     id: 'diamond_hands',
     name: 'DiamondHandsCoin',
     emoji: '💎',
     basePrice: 100,
     volatility: 0.08,
-    trend: 0.002,
+    trend: 0.003,         // was 0.002
     hype: 0.45,
     stability: 0.30,
     risk: 0.65,
     hypeDecay: 0.975,
     unlockThreshold: 2000,
     description: 'HODL or die. Statistically: mostly die.',
+    archetype: 'HIGH RISK',
+    archetypeClass: 'arch-highrisk',
+    buyReason: 'Positive trend but violent shocks. Size small — huge upside if you can stomach the swings.',
   },
   {
-    // Chaos gambler: strong upward trend offset by carrying cost + extreme crashes
     id: 'rug_pull',
     name: 'Rug Pull Token',
     emoji: '🪤',
     basePrice: 1,
     volatility: 0.12,
-    trend: 0.005,
+    trend: 0.0075,        // was 0.005
     hype: 0.50,
     stability: 0.05,
     risk: 0.90,
@@ -299,30 +332,34 @@ export const ASSET_CONFIGS: AssetConfig[] = [
     carryingCost: 0.000120,
     unlockThreshold: 3500,
     description: 'Why is it going up? Should you be worried? Yes.',
+    archetype: 'MAX CHAOS',
+    archetypeClass: 'arch-chaos',
+    buyReason: 'Maximum volatility. Penny stock that can 10× or go to zero — pure degen play.',
   },
   {
-    // Hype rider correlated with CatCoin — both pump on meme events
     id: 'doge_cousin',
     name: "Doge's Cousin",
     emoji: '🐕',
     basePrice: 0.5,
     volatility: 0.07,
-    trend: 0.001,
+    trend: 0.0015,        // was 0.001
     hype: 0.50,
     stability: 0.20,
     risk: 0.55,
     hypeDecay: 0.94,
     unlockThreshold: 5000,
     description: 'Much wow. Very cousin. Such price discovery.',
+    archetype: 'HYPE RIDER',
+    archetypeClass: 'arch-hype',
+    buyReason: "Correlated with CatCoin — trade the lag. CatCoin pumps first, this follows.",
   },
   {
-    // Pure chaos: negative trend, heavy carrying cost, only worth holding into an event
     id: 'nft_of_nft',
     name: 'NFT of an NFT',
     emoji: '🖼️',
     basePrice: 500,
     volatility: 0.10,
-    trend: -0.002,
+    trend: -0.003,        // was -0.002
     hype: 0.20,
     stability: 0.05,
     risk: 0.85,
@@ -330,20 +367,26 @@ export const ASSET_CONFIGS: AssetConfig[] = [
     carryingCost: 0.000160,
     unlockThreshold: 10000,
     description: 'You own the JPEG of the JPEG. Very art. Very real.',
+    archetype: 'CHAOS',
+    archetypeClass: 'arch-chaos',
+    buyReason: 'Enter ONLY when NFT Frenzy event is imminent. Otherwise pure bleed.',
   },
   {
-    // Safe steady climber: the blue chip — no excitement, just consistent growth
     id: 'stonks_up',
     name: 'Stonks Only Up',
     emoji: '📈',
     basePrice: 1000,
     volatility: 0.015,
-    trend: 0.006,
+    trend: 0.009,         // was 0.006
     hype: 0.10,
     stability: 0.80,
     risk: 0.05,
     hypeDecay: 0.995,
     unlockThreshold: 25000,
     description: 'This one actually goes up. Scientists baffled.',
+    archetype: 'BLUE CHIP',
+    archetypeClass: 'arch-blue',
+    buyReason: 'The safe compounder. Highest dividends. Buy, hold, accumulate — boring and profitable.',
+    dividendRate: 0.0015, // 0.15 %/day — meaningful passive income on large positions
   },
 ];

@@ -285,6 +285,47 @@ export const CORRELATED_PAIRS: Array<{ ids: [string, string]; warning: string }>
   },
 ];
 
+// ── Timing window (ENTRY / RIDING / EXIT / BLEEDING) ─────────────────────────
+//
+// One persistent label on every card that tells players where they are in the
+// cycle — so they can act on it, not just observe price movement.
+
+export interface TimingWindow { text: string; cls: string; }
+
+export function getTimingWindow(asset: Asset): TimingWindow {
+  const { hype, momentum, stability, carryingCost } = asset;
+
+  // Hype cycle: highest priority because hype has a finite, predictable arc
+  if (hype > 0.75 && momentum > 0)
+    return { text: '⚡ PEAK HYPE — consider selling soon', cls: 'tw-peak' };
+  if (hype > 0.75 && momentum <= 0)
+    return { text: '🔴 HYPE FADING — exit window closing', cls: 'tw-exit' };
+  if (hype > 0.45 && momentum > 0.005)
+    return { text: '🟢 ENTERING — hype + momentum aligned', cls: 'tw-enter' };
+  if (hype > 0.45 && momentum < -0.005)
+    return { text: '🟡 FADING — hype passing, watch for reversal', cls: 'tw-warn' };
+
+  // Momentum cycle
+  if (momentum > 0.022)
+    return { text: '⚡ RIDING — strong uptrend active', cls: 'tw-peak' };
+  if (momentum > 0.008)
+    return { text: '🟢 ENTERING — momentum building', cls: 'tw-enter' };
+  if (momentum < -0.022)
+    return { text: '🔴 EXIT NOW — sharp decline in progress', cls: 'tw-exit' };
+  if (momentum < -0.008)
+    return { text: '🟡 FALLING — wait for reversal signal', cls: 'tw-warn' };
+
+  // Carrying cost trap: player is bleeding for no reason
+  if (carryingCost > 0 && hype < 0.25 && momentum <= 0)
+    return { text: '💸 BLEEDING — exit or wait for catalyst', cls: 'tw-bleed' };
+
+  // Blue chip steady state
+  if (stability > 0.6 && momentum >= -0.005)
+    return { text: '🛡 STEADY — safe to accumulate anytime', cls: 'tw-stable' };
+
+  return { text: '⏳ WATCHING — no clear timing signal', cls: 'tw-neutral' };
+}
+
 // ── Hype decay estimate ────────────────────────────────────────────────────────
 
 export function getHypeDecayTicks(asset: Asset): number {

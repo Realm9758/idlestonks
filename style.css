@@ -6303,3 +6303,118 @@ body {
   flex-shrink: 0;
 }
 .ms-sub   { font-size: 10px; color: rgba(255,255,255,0.4); }
+
+/* ── Archetype badges ────────────────────────────────────────────────────────── */
+.asset-archetype-row {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  flex-wrap: wrap;
+  margin-top: 3px;
+}
+.asset-archetype {
+  display: inline-block;
+  font-size: 9px;
+  font-weight: 900;
+  letter-spacing: 0.06em;
+  padding: 2px 7px;
+  border-radius: 20px;
+  border: 1px solid currentColor;
+  white-space: nowrap;
+  text-transform: uppercase;
+}
+.arch-hype      { color: #fb923c; background: rgba(251,146,60,0.12); }
+.arch-blue      { color: #6fb3ff; background: rgba(111,179,255,0.12); }
+.arch-steady    { color: #3ddc84; background: rgba(61,220,132,0.10); }
+.arch-blend     { color: #c084fc; background: rgba(192,132,252,0.10); }
+.arch-chaos     { color: #ff5252; background: rgba(255,82,82,0.12); }
+.arch-highrisk  { color: #fbbf24; background: rgba(251,191,36,0.12); }
+
+/* Dividend / bleed badges */
+.asset-div-badge {
+  display: inline-block;
+  font-size: 9px;
+  font-weight: 700;
+  padding: 2px 6px;
+  border-radius: 20px;
+  color: #f4c430;
+  background: rgba(244,196,48,0.12);
+  border: 1px solid rgba(244,196,48,0.35);
+  white-space: nowrap;
+}
+.asset-bleed-badge {
+  display: inline-block;
+  font-size: 9px;
+  font-weight: 700;
+  padding: 2px 6px;
+  border-radius: 20px;
+  color: #ff6b6b;
+  background: rgba(255,107,107,0.10);
+  border: 1px solid rgba(255,107,107,0.30);
+  white-space: nowrap;
+}
+
+/* ── Buy reason line ──────────────────────────────────────────────────────────── */
+.asset-buy-reason {
+  font-size: 10px;
+  color: rgba(255,255,255,0.42);
+  margin-top: 3px;
+  line-height: 1.35;
+  font-style: italic;
+}
+
+/* ── Live hype bar ───────────────────────────────────────────────────────────── */
+.asset-hype-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 5px;
+}
+.hype-bar-track {
+  flex: 1;
+  height: 5px;
+  border-radius: 3px;
+  background: rgba(255,255,255,0.08);
+  overflow: hidden;
+}
+.hype-bar-fill {
+  height: 100%;
+  border-radius: 3px;
+  transition: width 0.4s ease, background-color 0.4s ease;
+}
+.hype-fill-cold  { background: rgba(255,255,255,0.15); }
+.hype-fill-med   { background: #f4c430; }
+.hype-fill-high  { background: #fb923c; }
+.hype-fill-viral {
+  background: #ff5252;
+  box-shadow: 0 0 6px rgba(255,82,82,0.6);
+  animation: hype-bar-pulse 0.9s ease-in-out infinite;
+}
+@keyframes hype-bar-pulse {
+  0%,100% { opacity: 1; }
+  50%      { opacity: 0.65; }
+}
+.hype-bar-label {
+  font-size: 9px;
+  font-weight: 700;
+  color: rgba(255,255,255,0.45);
+  white-space: nowrap;
+  min-width: 52px;
+  text-align: right;
+}
+
+/* ── Timing window indicator ─────────────────────────────────────────────────── */
+.asset-timing {
+  font-size: 10px;
+  font-weight: 700;
+  margin-top: 4px;
+  padding: 2px 0;
+  transition: color 0.3s;
+}
+.tw-enter   { color: #3ddc84; }
+.tw-peak    { color: #f4c430; }
+.tw-exit    { color: #ff5252; animation: tag-crash-pulse 0.9s ease-in-out infinite; }
+.tw-warn    { color: #fb923c; }
+.tw-bleed   { color: #ff6b6b; }
+.tw-stable  { color: #6fb3ff; }
+.tw-neutral { color: rgba(255,255,255,0.28); }

@@ -109,6 +109,28 @@ export class IdleSystem {
     const entries = this.eventSystem.dayTick(this.market, this.player, hamster);
     for (const entry of entries) this.callbacks.onEvent(entry);
 
+    // ── Dividend income from stable holdings ─────────────────────────────
+    let totalDividend = 0;
+    for (const asset of this.market.getAllAssets()) {
+      const d = asset.getDailyDividend();
+      if (d > 0) {
+        totalDividend += d;
+        this.player.cash += d;
+        this.player.totalEarned += d;
+      }
+    }
+    if (totalDividend > 0) {
+      const fmt = totalDividend >= 1000
+        ? `$${(totalDividend / 1000).toFixed(1)}K`
+        : `$${totalDividend.toFixed(2)}`;
+      this.callbacks.onEvent({
+        id: this.tickCount * 10 + 7,
+        timestamp: Date.now(),
+        message: `💰 Dividend income: +${fmt} from stable holdings`,
+        severity: 'good',
+      });
+    }
+
     // News generation + resolution
     if (this.newsSystem) {
       const newItem = this.newsSystem.generateIfDue(this.market, this.dayCount);
