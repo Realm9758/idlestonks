@@ -19,6 +19,7 @@ export interface IdleCallbacks {
   onNewsResolved?: (resolution: NewsResolution) => void;
   onEventPreChoice?: (hint: string) => void;
   onLimitOrderFilled?: (message: string) => void;
+  onDividendPaid?: (amount: number) => void;
 }
 
 export class IdleSystem {
@@ -176,6 +177,7 @@ export class IdleSystem {
         message: `💰 Dividend income: +${fmt} from stable holdings`,
         severity: 'good',
       });
+      this.callbacks.onDividendPaid?.(totalDividend);
     }
 
     if (this.newsSystem) {

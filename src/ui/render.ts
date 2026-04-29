@@ -90,7 +90,7 @@ export class Renderer {
   // Black market
   private bmPanel: BlackMarketPanel | null = null;
   private hfPanel: HedgeFundPanel | null = null;
-  private currentTab: 'main' | 'upgrades' | 'bm' | 'hf' = 'main';
+  private currentTab: 'main' | 'upgrades' | 'bm' | 'hf' | 'missions' = 'main';
 
   // Sound
   private soundSystem: SoundSystem | null = null;
@@ -213,6 +213,7 @@ export class Renderer {
     <div class="tab-bar-left">
       <button class="tab-btn tab-active" data-tab="main">📊 Market</button>
       <button class="tab-btn" data-tab="upgrades">⬆️ Upgrades</button>
+      <button class="tab-btn" data-tab="missions">🎯 Missions</button>
       <button class="tab-btn tab-locked" data-tab="bm" id="tab-bm">🔒 Classified</button>
       <button class="tab-btn tab-locked hidden" data-tab="hf" id="tab-hf">💼 Hedge Fund</button>
     </div>
@@ -437,6 +438,9 @@ export class Renderer {
     </div>
   </div>
 
+  <!-- Missions tab panel -->
+  <div id="missions-panel-mount" class="hidden"></div>
+
   <!-- Black market mount point -->
   <div id="bm-panel-mount" class="hidden"></div>
 
@@ -552,7 +556,7 @@ export class Renderer {
     document.getElementById('tab-bar')!.addEventListener('click', (e) => {
       const btn = (e.target as HTMLElement).closest<HTMLElement>('[data-tab]');
       if (!btn || btn.classList.contains('tab-locked')) return;
-      this.switchTab(btn.dataset.tab as 'main' | 'upgrades' | 'bm' | 'hf');
+      this.switchTab(btn.dataset.tab as 'main' | 'upgrades' | 'bm' | 'hf' | 'missions');
     });
     // Portfolio: delegate sell-all on portfolio rows
     document.getElementById('portfolio-list')!.addEventListener('click', (e) => {
@@ -2020,10 +2024,11 @@ export class Renderer {
     this.bmPanel = panel;
   }
 
-  switchTab(tab: 'main' | 'upgrades' | 'bm' | 'hf'): void {
+  switchTab(tab: 'main' | 'upgrades' | 'bm' | 'hf' | 'missions'): void {
     this.currentTab = tab;
     document.getElementById('main-grid')!.classList.toggle('hidden', tab !== 'main');
     document.getElementById('upgrades-tab-panel')!.classList.toggle('hidden', tab !== 'upgrades');
+    document.getElementById('missions-panel-mount')!.classList.toggle('hidden', tab !== 'missions');
     document.getElementById('bm-panel-mount')!.classList.toggle('hidden', tab !== 'bm');
     document.getElementById('hf-panel-mount')!.classList.toggle('hidden', tab !== 'hf');
     document.querySelectorAll<HTMLElement>('#tab-bar [data-tab]').forEach(btn => {

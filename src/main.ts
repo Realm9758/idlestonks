@@ -15,6 +15,9 @@ import { SoundSystem } from './systems/SoundSystem.ts';
 import { Renderer } from './ui/render.ts';
 import { TutorialSystem } from './systems/TutorialSystem.ts';
 import { TutorialOverlay } from './ui/TutorialOverlay.ts';
+import { MissionSystem } from './systems/MissionSystem.ts';
+import { QteOverlay } from './ui/QteOverlay.ts';
+import { MissionPanel } from './ui/MissionPanel.ts';
 import { getTradeInsight } from './ui/components.ts';
 import { screenFlash, screenShake } from './ui/animations.ts';
 
@@ -42,6 +45,8 @@ const hfSystem        = new HedgeFundSystem();
 const soundSystem     = new SoundSystem();
 const tutorialSystem  = new TutorialSystem();
 const tutorialHasSave = tutorialSystem.load();
+const missionSystem   = new MissionSystem();
+const qteOverlay      = new QteOverlay();
 
 // ── Idle system ───────────────────────────────────────────────────────────────
 // Created before renderer so save restoration can set day state before first render.
@@ -180,6 +185,15 @@ const idleSystem = new IdleSystem(
         }
       }
 
+      // Mission system tick
+      missionSystem.tick(player, market, rankSystem.getHighestRankIndex(), bmSystem.rugPullCount);
+      missionPanel.refresh(missionSystem);
+
+      // Mission autosave every 30 seconds
+      if (tick % 30 === 0) {
+        localStorage.setItem('idlestonks_missions', JSON.stringify(missionSystem.saveState()));
+      }
+
       renderer.update(market, player, eventSystem, upgradeSystem, tick, day, secondsInDay, secondsPerDay, newsSystem, rankSystem, investorSystem);
     },
 
@@ -270,6 +284,7 @@ const renderer = new Renderer({
       renderer.showToast(getTradeInsight(asset, 'buy'), 'info');
       renderer.animateTrade(assetId, `-${(asset.price * qty).toFixed(0)}`, 'down');
       tutorialSystem.notifyAction('buy');
+      missionSystem.onBuy(asset.momentum);
     }
   },
 
@@ -285,6 +300,22 @@ const renderer = new Renderer({
       renderer.showToast(getTradeInsight(asset, 'sell'), 'info');
       renderer.animateTrade(assetId, `+${(asset.price * qty).toFixed(0)}`, 'up');
       tutorialSystem.notifyAction('sell');
+      missionSystem.onSell(asset.hype, asset.momentum);
+      const saleValue = asset.price * qty;
+      if (saleValue >= 300 && (asset.hype > 0.5 || asset.momentum > 0.012)) {
+        const qteType = asset.hype > 0.5 ? 'timing_bar' : 'reaction';
+        const qteReason = asset.hype > 0.5 ? `🔥 Hype sell — ${asset.name}` : `📈 Momentum trade — ${asset.name}`;
+        qteOverlay.trigger(qteType, qteReason, (r) => {
+          missionSystem.onQteResult(r);
+          if (r !== 'missed') {
+            const bonus = saleValue * (r === 'perfect' ? 0.25 : 0.10);
+            player.cash += bonus;
+            player.totalEarned += bonus;
+            renderer.showToast(`${r === 'perfect' ? '🎯 PERFECT' : '✅ GOOD'} +$${bonus.toFixed(0)} bonus!`, 'success');
+            soundSystem.play('profit');
+          }
+        });
+      }
     }
   },
 
@@ -301,6 +332,7 @@ const renderer = new Renderer({
       renderer.showToast(getTradeInsight(asset, 'buy'), 'info');
       renderer.animateTrade(assetId, `-${(asset.price * qty).toFixed(0)}`, 'down');
       tutorialSystem.notifyAction('buy');
+      missionSystem.onBuy(asset.momentum);
     }
   },
 
@@ -318,6 +350,22 @@ const renderer = new Renderer({
       renderer.showToast(getTradeInsight(asset, 'sell'), 'info');
       renderer.animateTrade(assetId, `+${(asset.price * qty).toFixed(0)}`, 'up');
       tutorialSystem.notifyAction('sell');
+      missionSystem.onSell(asset.hype, asset.momentum);
+      const saleValue = asset.price * qty;
+      if (saleValue >= 300 && (asset.hype > 0.5 || asset.momentum > 0.012)) {
+        const qteType = asset.hype > 0.5 ? 'timing_bar' : 'reaction';
+        const qteReason = asset.hype > 0.5 ? `🔥 Hype sell — ${asset.name}` : `📈 Momentum trade — ${asset.name}`;
+        qteOverlay.trigger(qteType, qteReason, (r) => {
+          missionSystem.onQteResult(r);
+          if (r !== 'missed') {
+            const bonus = saleValue * (r === 'perfect' ? 0.25 : 0.10);
+            player.cash += bonus;
+            player.totalEarned += bonus;
+            renderer.showToast(`${r === 'perfect' ? '🎯 PERFECT' : '✅ GOOD'} +$${bonus.toFixed(0)} bonus!`, 'success');
+            soundSystem.play('profit');
+          }
+        });
+      }
     }
   },
 
@@ -350,6 +398,7 @@ const renderer = new Renderer({
     const result = market.manipulate(assetId, successBonus);
     renderer.showToast(result.message, result.success ? 'success' : 'error');
     eventSystem.addEntry(result.message, result.success ? 'good' : 'bad');
+    if (result.success) missionSystem.onMarketManipSuccess();
     renderer.hideModal();
   },
 
@@ -394,6 +443,7 @@ const renderer = new Renderer({
   onClearSave() {
     saveSystem.clearSave();
     tutorialSystem.clearSave();
+    localStorage.removeItem('idlestonks_missions');
     location.reload();
   },
 
@@ -474,6 +524,29 @@ hfPanel.mount(document.getElementById('hf-panel-mount')!, {
 renderer.setHfPanel(hfPanel);
 if (hfSystem.unlocked) renderer.revealHedgeFundTab();
 renderer.setSoundSystem(soundSystem);
+
+// ── Mission panel + QTE overlay ───────────────────────────────────────────────
+
+const missionPanel = new MissionPanel();
+missionPanel.mount(document.getElementById('missions-panel-mount')!);
+qteOverlay.mount(document.body);
+
+missionSystem.setOnComplete((m) => {
+  player.cash += m.cashReward;
+  player.totalEarned += m.cashReward;
+  renderer.showToast(`🎯 Mission complete: "${m.title}"! +$${m.cashReward.toLocaleString()} +${m.xpReward}XP`, 'success');
+  soundSystem.play('profit');
+  eventSystem.addEntry(`🎯 Mission "${m.title}" completed! Reward: +$${m.cashReward.toLocaleString()}`, 'good');
+});
+
+const missionSaveRaw = localStorage.getItem('idlestonks_missions');
+if (missionSaveRaw) {
+  try { missionSystem.loadState(JSON.parse(missionSaveRaw), player, rankSystem.getHighestRankIndex()); }
+  catch { missionSystem.initialize(rankSystem.getHighestRankIndex(), player); }
+} else {
+  missionSystem.initialize(rankSystem.getHighestRankIndex(), player);
+}
+missionPanel.initialRender(missionSystem);
 
 // ── Tutorial ──────────────────────────────────────────────────────────────────
 // Returning players who existed before tutorial feature → skip automatically.
