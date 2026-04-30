@@ -1,0 +1,304 @@
+/* ── Asset cards (new design) ───────────────────────────────────────────────── */
+#asset-list { padding: 10px; display: flex; flex-direction: column; gap: 8px; }
+
+.asset-row {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  transition: border-color 0.2s, box-shadow 0.2s, transform 0.15s;
+}
+.asset-row:hover {
+  border-color: var(--border-hi);
+  box-shadow: 0 4px 20px rgba(0,0,0,0.35);
+  transform: translateY(-1px);
+}
+.hype-high  { box-shadow: 0 0 0 1px rgba(227,179,65,0.25); }
+.risk-high  { box-shadow: 0 0 0 1px rgba(248,81,73,0.2); }
+.mom-trending-up   { border-color: rgba(63,185,80,0.25) !important; }
+.mom-trending-down { border-color: rgba(248,81,73,0.2) !important; }
+
+/* Card top row */
+.asset-card-top {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 16px 10px;
+}
+
+.asset-left {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  flex: 1;
+  min-width: 0;
+}
+
+.asset-icon-wrap {
+  font-size: 26px;
+  line-height: 1;
+  flex-shrink: 0;
+}
+
+.asset-info { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 5px; }
+
+.asset-name-row {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  flex-wrap: wrap;
+}
+
+.asset-name   { font-weight: 600; font-size: 15px; color: var(--text); letter-spacing: -0.01em; }
+.asset-ticker { font-size: 11px; color: var(--text-muted); font-weight: 500; background: rgba(255,255,255,0.06); padding: 1px 6px; border-radius: 4px; }
+.asset-trend  { font-size: 11px; font-weight: bold; }
+
+.asset-badge-row { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; }
+.asset-tags      { display: flex; gap: 4px; flex-wrap: wrap; margin-top: 2px; }
+.asset-news-line {
+  font-size: 10px;
+  color: var(--blue);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 280px;
+  opacity: 0.85;
+}
+
+.asset-sparkline {
+  flex-shrink: 0;
+  opacity: 0.9;
+}
+
+.asset-price-col {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  flex-shrink: 0;
+  gap: 2px;
+}
+
+.asset-price  { font-size: 18px; font-weight: 700; color: var(--text); letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
+.asset-change { font-size: 12px; font-weight: 600; }
+.asset-owned  { font-size: 10px; color: var(--text-muted); margin-top: 2px; }
+
+/* Action row */
+.asset-action-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 14px 12px;
+  border-top: 1px solid var(--border);
+  background: rgba(0,0,0,0.1);
+  flex-wrap: wrap;
+}
+
+.asset-qty-group {
+  display: flex;
+  align-items: center;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.btn-qty {
+  width: 28px;
+  height: 28px;
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  font-size: 16px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: color 0.15s, background 0.15s;
+  font-family: var(--font);
+  line-height: 1;
+}
+.btn-qty:hover { color: var(--text); background: rgba(255,255,255,0.06); }
+
+.qty-input {
+  width: 44px;
+  padding: 4px 2px;
+  background: transparent;
+  border: none;
+  border-left: 1px solid var(--border);
+  border-right: 1px solid var(--border);
+  color: var(--text);
+  font-family: var(--font);
+  font-size: 13px;
+  font-weight: 600;
+  text-align: center;
+}
+.qty-input:focus { outline: none; }
+.qty-input::-webkit-inner-spin-button,
+.qty-input::-webkit-outer-spin-button { opacity: 0; }
+
+/* ── Portfolio ──────────────────────────────────────────────────────────────── */
+#portfolio-list { padding: 10px; display: flex; flex-direction: column; gap: 6px; }
+
+.portfolio-row {
+  display: grid;
+  grid-template-columns: 1fr auto auto auto auto;
+  gap: 6px;
+  align-items: center;
+  padding: 10px 12px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  font-size: 12px;
+  transition: border-color 0.2s;
+}
+.portfolio-row:hover { border-color: var(--border-hi); }
+
+.p-name  { font-weight: 600; color: var(--text); font-size: 13px; }
+.p-qty   { color: var(--text-muted); font-size: 11px; }
+.p-value { font-weight: 700; color: var(--text); min-width: 70px; text-align: right; font-variant-numeric: tabular-nums; }
+.p-change { font-size: 11px; min-width: 55px; text-align: right; font-weight: 600; }
+
+/* ── Event log ──────────────────────────────────────────────────────────────── */
+#event-log { padding: 8px; display: flex; flex-direction: column; gap: 4px; max-height: 220px; overflow-y: auto; }
+
+.event-entry {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 8px 12px;
+  background: var(--bg-card);
+  border-radius: 8px;
+  border-left: 3px solid var(--border);
+  font-size: 12px;
+  transition: border-color 0.2s;
+}
+
+.event-msg  { flex: 1; color: var(--text); line-height: 1.4; }
+.event-time { color: var(--text-muted); white-space: nowrap; font-size: 10px; }
+
+.sev-good    { border-color: var(--green); }
+.sev-bad     { border-color: var(--red); }
+.sev-chaos   { border-color: var(--purple); }
+.sev-neutral { border-color: var(--border); }
+
+.timer-badge {
+  font-size: 10px;
+  padding: 2px 8px;
+  border-radius: 99px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  color: var(--yellow);
+  transition: border-color 0.4s, color 0.4s;
+  white-space: nowrap;
+}
+
+/* ── Timer urgency states ─────────────────────────────────────────────────── */
+
+.timer-badge.event-soon {
+  border-color: var(--yellow);
+  color: var(--yellow);
+  box-shadow: 0 0 6px rgba(255,217,102,0.25);
+}
+
+@keyframes badge-pulse {
+  0%,100% { box-shadow: 0 0 4px rgba(255,82,82,0.4); border-color: var(--red); }
+  50%     { box-shadow: 0 0 14px rgba(255,82,82,0.9); border-color: #ff8080; }
+}
+
+.timer-badge.event-imminent {
+  border-color: var(--red);
+  color: var(--red);
+  animation: badge-pulse 0.8s ease-in-out infinite;
+  font-weight: bold;
+}
+
+/* ── Event timer area + hint bar ─────────────────────────────────────────── */
+
+.event-timer-area {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.event-hint-bar {
+  padding: 5px 12px;
+  font-size: 10px;
+  border-bottom: 1px solid var(--border);
+  color: var(--text-muted);
+  background: var(--bg-card);
+  letter-spacing: 0.02em;
+}
+
+.event-hint-bar.hint-bloomberg { color: var(--blue); }
+.event-hint-bar.hint-hamster   { color: var(--purple); }
+
+/* ── Skip day button ─────────────────────────────────────────────────────── */
+
+.btn-skip-day {
+  border-color: var(--yellow);
+  color: var(--yellow);
+  background: transparent;
+  font-size: 10px;
+  padding: 3px 8px;
+  white-space: nowrap;
+}
+.btn-skip-day:hover:not(:disabled) { background: rgba(255,217,102,0.1); }
+.btn-skip-day:disabled { opacity: 0.35; cursor: not-allowed; }
+
+/* ── Upgrades ───────────────────────────────────────────────────────────────── */
+#upgrade-list { padding: 6px; display: flex; flex-direction: column; gap: 4px; }
+
+.upgrade-card {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+
+.upgrade-card.owned {
+  border-color: var(--green);
+  opacity: 0.7;
+}
+
+.upg-info {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.upg-name { font-weight: bold; font-size: 12px; }
+.upg-desc { font-size: 10px; color: var(--text-muted); }
+
+.upg-owned-badge {
+  font-size: 10px;
+  padding: 3px 8px;
+  border-radius: 99px;
+  background: rgba(61,220,132,0.15);
+  color: var(--green);
+  white-space: nowrap;
+}
+
+/* ── Footer ─────────────────────────────────────────────────────────────────── */
+#footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 16px;
+  background: var(--bg-panel);
+  border-top: 1px solid var(--border);
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+#footer-stats { font-size: 11px; color: var(--text-muted); }
+.footer-actions { display: flex; gap: 8px; }
+

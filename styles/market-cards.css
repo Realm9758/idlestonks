@@ -1,0 +1,244 @@
+/* ── Refactored stock card layout ─────────────────────────────────────────── */
+
+.asset-card-main {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px 8px;
+}
+
+.asset-info-compact {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.asset-right {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 6px;
+  margin-left: auto;
+  flex-shrink: 0;
+}
+
+/* ── Decision signal pill ─────────────────────────────────────────────────── */
+
+.asset-decision-pill {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  border-radius: 8px;
+  padding: 5px 10px;
+  border: 1px solid;
+  min-width: 110px;
+  text-align: right;
+  transition: background 0.3s, border-color 0.3s;
+}
+
+.adp-signal {
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  line-height: 1.2;
+}
+
+.adp-reason {
+  font-size: 10px;
+  font-weight: 400;
+  opacity: 0.75;
+  line-height: 1.3;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 140px;
+}
+
+.asset-decision-pill.sig-good {
+  background: rgba(63, 185, 80, 0.12);
+  border-color: rgba(63, 185, 80, 0.45);
+}
+.asset-decision-pill.sig-good .adp-signal { color: #3fb950; }
+.asset-decision-pill.sig-good .adp-reason { color: #3fb950; }
+
+.asset-decision-pill.sig-wait {
+  background: rgba(227, 179, 65, 0.10);
+  border-color: rgba(227, 179, 65, 0.35);
+}
+.asset-decision-pill.sig-wait .adp-signal { color: #e3b341; }
+.asset-decision-pill.sig-wait .adp-reason { color: #e3b341; }
+
+.asset-decision-pill.sig-risky {
+  background: rgba(248, 81, 73, 0.10);
+  border-color: rgba(248, 81, 73, 0.40);
+}
+.asset-decision-pill.sig-risky .adp-signal { color: #f85149; }
+.asset-decision-pill.sig-risky .adp-reason { color: #f85149; }
+
+/* ── Collapse/expand button (⋯) ───────────────────────────────────────────── */
+
+.btn-detail {
+  margin-left: auto;
+  flex-shrink: 0;
+  font-size: 16px;
+  color: var(--text-muted);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  padding: 2px 6px;
+  border-radius: 4px;
+  line-height: 1;
+  transition: color 0.15s, background 0.15s;
+}
+.btn-detail:hover { color: var(--text); background: var(--bg-hover); }
+
+/* ── Detail panel ─────────────────────────────────────────────────────────── */
+
+.asset-detail-panel {
+  border-top: 1px solid var(--border);
+  padding: 10px 12px 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  background: rgba(0, 0, 0, 0.08);
+}
+.asset-detail-panel.hidden { display: none; }
+
+.adp-hype-section {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.adp-hype-section .hype-bar-track {
+  flex: 1;
+  height: 5px;
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.adp-footer {
+  display: flex;
+  gap: 6px;
+  margin-top: 2px;
+}
+
+/* ── Compact fear/greed bar ───────────────────────────────────────────────── */
+
+.fear-greed-bar-compact {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 12px;
+  border-bottom: 1px solid var(--border);
+  font-size: 11px;
+}
+
+.fg-label-compact {
+  color: var(--text-muted);
+  font-weight: 600;
+  flex-shrink: 0;
+}
+
+.fg-track-compact {
+  flex: 1;
+  height: 4px;
+  background: linear-gradient(to right, #58a6ff 0%, #e3b341 50%, #f85149 100%);
+  border-radius: 2px;
+  position: relative;
+  overflow: hidden;
+  max-width: 120px;
+}
+
+.fg-fill-compact {
+  position: absolute;
+  left: 0; top: 0; bottom: 0;
+  width: 50%;
+  background: rgba(0, 0, 0, 0.45);
+  transition: width 0.5s ease;
+  pointer-events: none;
+}
+
+/* ── Best Opportunity cards ───────────────────────────────────────────────── */
+
+.opportunity-bar {
+  padding: 8px 12px 10px;
+  border-bottom: 1px solid var(--border);
+}
+.opportunity-bar.hidden { display: none; }
+
+.opp-header-row {
+  margin-bottom: 6px;
+}
+.opp-header-label {
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+  text-transform: uppercase;
+}
+
+.opp-cards {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.opp-card {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 7px 10px;
+  transition: border-color 0.2s;
+}
+.opp-card:hover { border-color: var(--border-hi); }
+
+.opp-card-emoji { font-size: 18px; flex-shrink: 0; }
+
+.opp-card-body {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+  flex: 1;
+}
+.opp-card-name {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.opp-card-reason {
+  font-size: 11px;
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.opp-card-signal {
+  font-size: 11px;
+  font-weight: 800;
+  padding: 3px 8px;
+  border-radius: 6px;
+  border: 1px solid;
+  flex-shrink: 0;
+  letter-spacing: 0.03em;
+}
+.opp-card-signal.sig-good  { color: #3fb950; border-color: rgba(63,185,80,0.4);  background: rgba(63,185,80,0.1);  }
+.opp-card-signal.sig-wait  { color: #e3b341; border-color: rgba(227,179,65,0.4); background: rgba(227,179,65,0.1); }
+.opp-card-signal.sig-risky { color: #f85149; border-color: rgba(248,81,73,0.4);  background: rgba(248,81,73,0.1);  }
+
+/* ── Light mode overrides for new components ──────────────────────────────── */
+
+body.light .asset-decision-pill.sig-good  { background: rgba(40,167,69,0.08);  border-color: rgba(40,167,69,0.4);  }
+body.light .asset-decision-pill.sig-wait  { background: rgba(212,167,44,0.08); border-color: rgba(212,167,44,0.4); }
+body.light .asset-decision-pill.sig-risky { background: rgba(220,53,69,0.08);  border-color: rgba(220,53,69,0.4);  }
+body.light .asset-detail-panel { background: rgba(0,0,0,0.03); }
+body.light .opp-card { background: var(--bg-card); }
