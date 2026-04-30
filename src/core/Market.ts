@@ -90,11 +90,18 @@ export class Market {
     return Math.min(100, Math.max(0, Math.round(score)));
   }
 
+  resetDayOpenPrices(): void {
+    for (const asset of this.assets.values()) {
+      asset.dayOpenPrice = asset.price;
+    }
+  }
+
   loadPrices(prices: Record<string, number>, ownedAmounts: Record<string, number>): void {
     for (const [id, price] of Object.entries(prices)) {
       const asset = this.assets.get(id);
       if (asset) {
         asset.price = price;
+        asset.dayOpenPrice = price;
         asset.priceHistory = [price];
       }
     }

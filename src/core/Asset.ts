@@ -1,7 +1,9 @@
+export type AssetArchetype = 'HYPE RIDER' | 'BLUE CHIP' | 'CHAOS' | 'MAX CHAOS' | 'BLENDED' | 'STEADY HOLD' | 'HIGH RISK';
+
 export interface StatLabel {
   icon: string;
   text: string;
-  cls: string; // sl-great | sl-good | sl-warn | sl-bad | sl-danger | sl-neutral
+  cls: string; // sl-great | sl-good | sl-warn | sl-bad | sl-danger | sl-neutral | sl-muted
 }
 
 export interface AssetConfig {
@@ -14,7 +16,7 @@ export interface AssetConfig {
   unlockThreshold: number;
   description: string;
   // Archetype identity
-  archetype: string;      // 'HYPE RIDER' | 'BLUE CHIP' | 'CHAOS' | 'BLENDED' | 'STEADY HOLD' | 'HIGH RISK'
+  archetype: AssetArchetype;
   archetypeClass: string; // CSS class for the archetype badge colour
   buyReason: string;      // 1-line strategic reason shown permanently on the card
   dividendRate?: number;  // daily fraction of held value paid as cash (e.g. 0.0015 = 0.15 %/day)
@@ -33,7 +35,7 @@ export class Asset {
   readonly basePrice: number;
   readonly unlockThreshold: number;
   readonly description: string;
-  readonly archetype: string;
+  readonly archetype: AssetArchetype;
   readonly archetypeClass: string;
   readonly buyReason: string;
   readonly dividendRate: number;
@@ -43,6 +45,7 @@ export class Asset {
   readonly carryingCost: number;
 
   price: number;
+  dayOpenPrice: number;  // price at the start of the current game day
   volatility: number;
   trend: number;
   hype: number;       // dynamic; decays ~1.5% per tick
@@ -74,6 +77,7 @@ export class Asset {
     this.hype = config.hype;
     this.momentum = 0;
     this.price = config.basePrice * (0.8 + Math.random() * 0.4);
+    this.dayOpenPrice = this.price;
     this.owned = 0;
     this.priceHistory = [this.price];
     this.isUnlocked = config.unlockThreshold === 0;
@@ -93,12 +97,10 @@ export class Asset {
     const effectiveVolatility = this.volatility * this.volatilityMod * this.baseVolatilityMult;
 
     // ── Fundamental component (~76% of movement) ────────────────────────
-    // Hype now contributes 2.5× more so viral spikes are clearly visible.
-    // Momentum weight raised so trending stocks feel like they're trending.
     const fundamentalPct =
       effectiveTrend +
-      this.momentum * 0.6 +
-      this.hype * 0.010;
+      this.momentum * 0.25 +
+      this.hype * 0.002;
 
     // ── Noise component (~24% of movement) ──────────────────────────────
     const noiseRaw = (Math.random() - 0.5) * 2 * effectiveVolatility * (1 + this.risk * 0.8);
@@ -117,12 +119,13 @@ export class Asset {
     }
 
     // Rare extreme shock driven by risk stat
-    if (Math.random() < this.risk * 0.012) {
+    if (Math.random() < this.risk * 0.003) {
       const dir = Math.random() > 0.45 ? 1 : -1;
-      pctChange += dir * (0.1 + Math.random() * 0.35 * this.risk);
+      pctChange += dir * (0.04 + Math.random() * 0.12 * this.risk);
     }
 
-    this.price = Math.max(0.01, this.price * (1 + pctChange));
+    const rawPrice = this.price * (1 + pctChange);
+    this.price = isFinite(rawPrice) ? Math.max(0.01, rawPrice) : this.basePrice;
 
     // (B) Carrying cost — chaos assets bleed value passively when flat
     if (this.carryingCost > 0) {
@@ -164,9 +167,13 @@ export class Asset {
   }
 
   getPriceChangePct(): number {
-    if (this.priceHistory.length < 2) return 0;
-    const oldest = this.priceHistory[0];
-    return ((this.price - oldest) / oldest) * 100;
+    if (this.dayOpenPrice <= 0) return 0;
+    return ((this.price - this.dayOpenPrice) / this.dayOpenPrice) * 100;
+  }
+
+  getPlayerProfitPct(avgCost: number): number {
+    if (avgCost <= 0) return 0;
+    return ((this.price - avgCost) / avgCost) * 100;
   }
 
   // ── Stat labels (used in both asset rows and Market Intel modal) ─────────
@@ -219,7 +226,7 @@ export const ASSET_CONFIGS: AssetConfig[] = [
     emoji: '🐱',
     basePrice: 10,
     volatility: 0.04,
-    trend: 0.0015,        // was 0.001 — scaled 1.5× so direction is perceptible
+    trend: 0.0005,        // near-zero: flat without hype, pops on meme events
     hype: 0.55,
     stability: 0.25,
     risk: 0.35,
@@ -236,7 +243,7 @@ export const ASSET_CONFIGS: AssetConfig[] = [
     emoji: '😂',
     basePrice: 25,
     volatility: 0.05,
-    trend: 0.003,         // was 0.002
+    trend: 0.0015,        // modest positive — catches hype with a floor
     hype: 0.50,
     stability: 0.30,
     risk: 0.40,
@@ -246,7 +253,7 @@ export const ASSET_CONFIGS: AssetConfig[] = [
     archetype: 'BLENDED',
     archetypeClass: 'arch-blend',
     buyReason: 'Balanced hype play. Catches most pumps with softer crashes. Pays tiny dividends.',
-    dividendRate: 0.0002, // 0.02 %/day — smallest dividend, just a nudge to hold
+    dividendRate: 0.0002,
   },
   {
     id: 'ai_writes_ai',
@@ -254,7 +261,7 @@ export const ASSET_CONFIGS: AssetConfig[] = [
     emoji: '🤖',
     basePrice: 50,
     volatility: 0.04,
-    trend: 0.0045,        // was 0.003
+    trend: 0.003,         // solid steady climber
     hype: 0.40,
     stability: 0.50,
     risk: 0.35,
@@ -264,7 +271,7 @@ export const ASSET_CONFIGS: AssetConfig[] = [
     archetype: 'STEADY HOLD',
     archetypeClass: 'arch-steady',
     buyReason: 'Buy and hold. Slow hype decay means events keep paying for days. Pays dividends.',
-    dividendRate: 0.0006, // 0.06 %/day
+    dividendRate: 0.0006,
   },
   {
     id: 'quantum_banana',
@@ -272,7 +279,7 @@ export const ASSET_CONFIGS: AssetConfig[] = [
     emoji: '🍌',
     basePrice: 7,
     volatility: 0.07,
-    trend: -0.0015,       // was -0.001
+    trend: -0.001,        // mild negative bleed, needs catalyst to pop
     hype: 0.20,
     stability: 0.10,
     risk: 0.80,
@@ -290,7 +297,7 @@ export const ASSET_CONFIGS: AssetConfig[] = [
     emoji: '📸',
     basePrice: 30,
     volatility: 0.06,
-    trend: -0.0015,       // was -0.001
+    trend: -0.001,        // negative baseline — must ride event spikes and exit
     hype: 0.70,
     stability: 0.15,
     risk: 0.50,
@@ -307,7 +314,7 @@ export const ASSET_CONFIGS: AssetConfig[] = [
     emoji: '💎',
     basePrice: 100,
     volatility: 0.08,
-    trend: 0.003,         // was 0.002
+    trend: 0.002,         // positive but regularly interrupted by shocks
     hype: 0.45,
     stability: 0.30,
     risk: 0.65,
@@ -324,7 +331,7 @@ export const ASSET_CONFIGS: AssetConfig[] = [
     emoji: '🪤',
     basePrice: 1,
     volatility: 0.12,
-    trend: 0.0075,        // was 0.005
+    trend: 0.005,         // strong trend but extreme risk overwhelms it regularly
     hype: 0.50,
     stability: 0.05,
     risk: 0.90,
@@ -342,7 +349,7 @@ export const ASSET_CONFIGS: AssetConfig[] = [
     emoji: '🐕',
     basePrice: 0.5,
     volatility: 0.07,
-    trend: 0.0015,        // was 0.001
+    trend: 0.0005,        // correlated with CatCoin via hype spillover
     hype: 0.50,
     stability: 0.20,
     risk: 0.55,
@@ -359,7 +366,7 @@ export const ASSET_CONFIGS: AssetConfig[] = [
     emoji: '🖼️',
     basePrice: 500,
     volatility: 0.10,
-    trend: -0.003,        // was -0.002
+    trend: -0.002,        // strong negative bleed — event-only entry
     hype: 0.20,
     stability: 0.05,
     risk: 0.85,
@@ -377,7 +384,7 @@ export const ASSET_CONFIGS: AssetConfig[] = [
     emoji: '📈',
     basePrice: 1000,
     volatility: 0.015,
-    trend: 0.009,         // was 0.006
+    trend: 0.006,         // reliable daily compounder; highest dividends
     hype: 0.10,
     stability: 0.80,
     risk: 0.05,
@@ -387,6 +394,6 @@ export const ASSET_CONFIGS: AssetConfig[] = [
     archetype: 'BLUE CHIP',
     archetypeClass: 'arch-blue',
     buyReason: 'The safe compounder. Highest dividends. Buy, hold, accumulate — boring and profitable.',
-    dividendRate: 0.0015, // 0.15 %/day — meaningful passive income on large positions
+    dividendRate: 0.0015,
   },
 ];

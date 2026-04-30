@@ -1,19 +1,21 @@
-import type { BlackMarketSystem, NewsManipTypeId } from '../systems/BlackMarketSystem.ts';
-import { NEWS_MANIP_TYPES } from '../systems/BlackMarketSystem.ts';
+import type { BlackMarketSystem } from '../systems/BlackMarketSystem.ts';
+import { NEWS_MANIP_TYPES } from '../systems/BlackMarketSystem.ts'; // used in updateDisplay newsManipResults loop
 import { screenShake, screenFlash } from './animations.ts';
 import { SocialMediaPanel } from './SocialMediaPanel.ts';
 import type { BmCallbacks } from './bmData.ts';
 import { UNLOCK_CHAT, TUTORIAL_CHAT } from './bmData.ts';
 import { BM_PANEL_HTML, BM_FIXED_HTML } from './bmLayout.ts';
 import { BlackMarketCallUI } from './BlackMarketCall.ts';
+import { NewsManipPanel } from './NewsManipPanel.ts';
 
 export type { BmCallbacks };
 
 export class BlackMarketPanel {
-  private sys:         BlackMarketSystem;
-  private cb:          BmCallbacks | null = null;
-  private socialPanel: SocialMediaPanel | null = null;
-  private callUI:      BlackMarketCallUI | null = null;
+  private sys:             BlackMarketSystem;
+  private cb:              BmCallbacks | null = null;
+  private socialPanel:     SocialMediaPanel | null = null;
+  private callUI:          BlackMarketCallUI | null = null;
+  private newsManipPanel:  NewsManipPanel | null = null;
   private lastCustomerCount = -1;
   tutorialStarted = false;
 
@@ -32,7 +34,15 @@ export class BlackMarketPanel {
     );
     this._wireEvents();
     this._mountSocialPanel();
+    this._mountNewsManipPanel();
     this.updateDisplay();
+  }
+
+  private _mountNewsManipPanel(): void {
+    const mount = document.getElementById('nm-panel');
+    if (!mount) return;
+    this.newsManipPanel = new NewsManipPanel(this.sys, this.cb!);
+    this.newsManipPanel.mount(mount);
   }
 
   private _mountSocialPanel(): void {
@@ -147,92 +157,7 @@ export class BlackMarketPanel {
   // ── News manipulation ─────────────────────────────────────────────────────
 
   private _renderNewsPanel(): void {
-    const container = document.getElementById('nm-panel');
-    if (!container) return;
-
-    if (!this.sys.newsManipUnlocked) {
-      container.innerHTML = `
-        <div class="nm-locked">
-          <div class="nm-lock-icon">🔒</div>
-          <div class="nm-lock-title">NEWS MANIPULATION</div>
-          <div class="nm-lock-sub">Requires $200,000 net worth while in the Black Market</div>
-          <div class="nm-lock-hint">Control the narrative. Shape the market.</div>
-        </div>`;
-      return;
-    }
-
-    const s = this.sys;
-    const canPublish  = s.canManipNews();
-    const cooldown    = s.newsManipCooldownSecs;
-    const limitColor  = s.newsManipsToday >= s.MAX_NEWS_MANIPS_PER_DAY ? 'nm-limit-danger' : '';
-    const pendingHtml = s.pendingNewsManips.length > 0
-      ? `<div class="nm-pending-section">
-          <div class="nm-section-lbl">IN CIRCULATION</div>
-          ${s.pendingNewsManips.map(m => `
-            <div class="nm-pending-item">
-              <span class="nm-pending-dot"></span>
-              <span class="nm-pending-headline">"${m.headline}"</span>
-              <span class="nm-pending-eta">resolves next day</span>
-            </div>`).join('')}
-        </div>`
-      : '';
-
-    container.innerHTML = `
-      <div class="nm-header">
-        <div class="nm-header-title">📰 NEWS CONTROL CENTER</div>
-        <div class="nm-header-meta">
-          <span class="nm-daily-limit ${limitColor}">${s.newsManipsToday} / ${s.MAX_NEWS_MANIPS_PER_DAY} TODAY</span>
-          ${cooldown > 0 ? `<span class="nm-cooldown">⏳ ${cooldown}s cooldown</span>` : ''}
-        </div>
-      </div>
-      <div class="nm-description">
-        Plant false stories and manipulate public perception. Every headline carries a cost — and a risk.
-      </div>
-      <div class="nm-cards">
-        ${NEWS_MANIP_TYPES.map(type => {
-          const disabled = !canPublish;
-          return `
-          <div class="nm-card nm-card-${type.id}">
-            <div class="nm-card-header">
-              <span class="nm-card-emoji">${type.emoji}</span>
-              <div class="nm-card-meta">
-                <div class="nm-card-title">${type.label}</div>
-                <div class="nm-card-tags">${type.tags.map(t => `<span class="nm-tag">${t}</span>`).join('')}</div>
-              </div>
-            </div>
-            <div class="nm-card-headline">"${type.headline}"</div>
-            <div class="nm-card-desc">${type.description}</div>
-            <div class="nm-card-effects">
-              <span class="nm-effect nm-effect-heat">+${type.heatOnPublish} HEAT on publish</span>
-              <span class="nm-effect nm-effect-hype">+${Math.round(type.hypeBoostOnSuccess * 100)}% HYPE on success</span>
-              ${type.heatOnFail > 0 ? `<span class="nm-effect nm-effect-fail">+${type.heatOnFail} HEAT on fail</span>` : ''}
-            </div>
-            <button class="nm-publish-btn" data-nm-type="${type.id}" ${disabled ? 'disabled' : ''}>
-              ${disabled
-                ? (cooldown > 0 ? `⏳ ${cooldown}s` : s.newsManipsToday >= s.MAX_NEWS_MANIPS_PER_DAY ? '✋ DAILY LIMIT' : '🔒 LOCKED')
-                : `📤 PUBLISH — $${type.cost.toLocaleString()}`}
-            </button>
-          </div>`;
-        }).join('')}
-      </div>
-      ${pendingHtml}`;
-
-    container.querySelectorAll<HTMLElement>('[data-nm-type]').forEach(btn => {
-      btn.addEventListener('click', () => {
-        this._handlePublishNewsManip(btn.dataset.nmType as NewsManipTypeId);
-      });
-    });
-  }
-
-  private _handlePublishNewsManip(typeId: NewsManipTypeId): void {
-    const type = NEWS_MANIP_TYPES.find(t => t.id === typeId);
-    if (!type) return;
-    const result = this.sys.publishNewsManip(typeId, amount => this.cb!.deductCash(amount));
-    if (!result.success) { this.cb!.showToast(result.message, 'error'); return; }
-    screenShake('light');
-    this.cb!.showToast(`📰 Story planted: "${type.headline}"`, 'info');
-    this._appendChatMsg('bm-chat-messages', 'left', `story's out. "${type.headline}" 📰`);
-    this._renderNewsPanel();
+    this.newsManipPanel?.refresh();
   }
 
   // ── Breaking news banner ──────────────────────────────────────────────────

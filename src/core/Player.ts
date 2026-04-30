@@ -11,6 +11,7 @@ export interface LimitOrder {
 export class Player {
   cash: number;
   totalEarned: number;
+  realisedProfit: number;
   tradeCount: number;
   earningsMultiplier: number;
   costBasis: Record<string, number> = {};
@@ -26,6 +27,7 @@ export class Player {
   constructor() {
     this.cash = 1000;
     this.totalEarned = 0;
+    this.realisedProfit = 0;
     this.tradeCount = 0;
     this.earningsMultiplier = 1;
   }
@@ -86,9 +88,11 @@ export class Player {
     const divBonus    = this.getDiversificationBonus(market);
     const streakBonus = this.getStreakBonus();
     const proceeds    = asset.price * quantity * this.earningsMultiplier * divBonus * streakBonus;
+    const costOfShares = basis * quantity;
 
     this.cash += proceeds;
     this.totalEarned += proceeds;
+    this.realisedProfit += proceeds - costOfShares;
     asset.owned -= quantity;
     this.tradeCount++;
 

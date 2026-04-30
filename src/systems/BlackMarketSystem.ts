@@ -89,9 +89,143 @@ export const LAWYER_UPGRADES: LawyerUpgrade[] = [
 
 // ── News Manipulation ──────────────────────────────────────────────────────
 
+export type NewsManipTypeId =
+  | 'positive_hype' | 'fear_crash' | 'fake_leak'
+  | 'competitor_scandal' | 'analyst_upgrade' | 'regulatory_rumour';
+
+export type NewsManipAngle    = 'safe_spin' | 'aggressive_hype' | 'fear_campaign' | 'insider_leak';
+export type StoryStrength     = 'low' | 'medium' | 'high';
+
+export interface NewsManipTypeDef {
+  id:                 NewsManipTypeId;
+  label:              string;
+  emoji:              string;
+  riskLabel:          string;
+  riskClass:          'risk-low' | 'risk-medium' | 'risk-high' | 'risk-extreme';
+  headlines:          string[];
+  description:        string;
+  cost:               number;
+  successChance:      number;
+  heatOnPublish:      number;
+  heatOnFail:         number;
+  hypeBoostOnSuccess: number;
+  trustDrainOnFail:   number;
+}
+
+export const NEWS_MANIP_TYPES: NewsManipTypeDef[] = [
+  {
+    id: 'positive_hype', label: 'Positive Hype News', emoji: '📈',
+    riskLabel: 'MEDIUM', riskClass: 'risk-medium',
+    headlines: [
+      'Major partnership rumored for MoonCoin',
+      'Institutional investors quietly accumulating MoonCoin',
+      'MoonCoin dev team hints at major Q4 announcement',
+    ],
+    description: 'Leak a fabricated partnership rumor to drive investor hype and pump the coin.',
+    cost: 5_000, successChance: 0.70, heatOnPublish: 8,  heatOnFail: 15, hypeBoostOnSuccess: 0.30, trustDrainOnFail: 0,
+  },
+  {
+    id: 'fear_crash', label: 'Fear / Negative News', emoji: '⚠️',
+    riskLabel: 'HIGH', riskClass: 'risk-high',
+    headlines: [
+      'Regulators investigating top competitor',
+      'Rival exchange under emergency audit',
+      'Competitor wallet exploit drains $40M — investors flee',
+    ],
+    description: 'Spread regulatory fear about a rival. Rattles the market and redirects money to your coin.',
+    cost: 8_000, successChance: 0.60, heatOnPublish: 12, heatOnFail: 22, hypeBoostOnSuccess: 0.20, trustDrainOnFail: 0.08,
+  },
+  {
+    id: 'fake_leak', label: 'Fake Insider Leak', emoji: '🎭',
+    riskLabel: 'EXTREME', riskClass: 'risk-extreme',
+    headlines: [
+      'Insider source: MoonCoin about to 10x',
+      'Anonymous dev: major announcement imminent',
+      'Leaked doc confirms institutional backing for MoonCoin',
+    ],
+    description: 'Plant fabricated insider information. Explosive upside — but if traced, investigation follows.',
+    cost: 12_000, successChance: 0.45, heatOnPublish: 18, heatOnFail: 32, hypeBoostOnSuccess: 0.55, trustDrainOnFail: 0.15,
+  },
+  {
+    id: 'competitor_scandal', label: 'Competitor Scandal', emoji: '💣',
+    riskLabel: 'HIGH', riskClass: 'risk-high',
+    headlines: [
+      'Rival exchange CEO accused of market fraud',
+      'Competitor project founders quietly dumping tokens',
+      'Explosive: rival coin is a ponzi, sources say',
+    ],
+    description: 'Damage a competitor — redirect their investors to MoonCoin.',
+    cost: 9_000, successChance: 0.55, heatOnPublish: 14, heatOnFail: 20, hypeBoostOnSuccess: 0.25, trustDrainOnFail: 0.06,
+  },
+  {
+    id: 'analyst_upgrade', label: 'Analyst Upgrade', emoji: '📊',
+    riskLabel: 'MEDIUM', riskClass: 'risk-medium',
+    headlines: [
+      'Leading analyst gives MoonCoin "Strong Buy" rating',
+      'Tier-1 research firm initiates MoonCoin coverage: Buy',
+      'Galaxy Capital upgrades MoonCoin target to $10',
+    ],
+    description: 'Plant a fake analyst note. High credibility, moderate risk.',
+    cost: 7_000, successChance: 0.65, heatOnPublish: 10, heatOnFail: 18, hypeBoostOnSuccess: 0.22, trustDrainOnFail: 0.04,
+  },
+  {
+    id: 'regulatory_rumour', label: 'Regulatory Rumour', emoji: '⚖️',
+    riskLabel: 'EXTREME', riskClass: 'risk-extreme',
+    headlines: [
+      'Sources: SEC to greenlight MoonCoin as ETF',
+      'White House advisor reportedly bullish on MoonCoin',
+      'Leaked draft: MoonCoin to receive federal exemption',
+    ],
+    description: 'Fake regulatory approval story. Volatile but potentially explosive.',
+    cost: 10_000, successChance: 0.50, heatOnPublish: 16, heatOnFail: 28, hypeBoostOnSuccess: 0.40, trustDrainOnFail: 0.10,
+  },
+];
+
+export interface AngleMod {
+  label:          string;
+  desc:           string;
+  emoji:          string;
+  heatMult:       number;
+  hypeBoostMult:  number;
+  successMod:     number;
+  costMult:       number;
+}
+
+export const ANGLE_MODS: Record<NewsManipAngle, AngleMod> = {
+  safe_spin:       { label: 'Safe Spin',       emoji: '🌿', desc: 'Softer tone, lower risk',   heatMult: 0.70, hypeBoostMult: 0.75, successMod: +0.10, costMult: 0.90 },
+  aggressive_hype: { label: 'Aggressive Hype', emoji: '🔥', desc: 'Loud push, high heat',       heatMult: 1.30, hypeBoostMult: 1.35, successMod: -0.08, costMult: 1.15 },
+  fear_campaign:   { label: 'Fear Campaign',   emoji: '😨', desc: 'Creates panic buying',        heatMult: 1.15, hypeBoostMult: 1.10, successMod: -0.05, costMult: 1.00 },
+  insider_leak:    { label: 'Insider Leak',    emoji: '🕵️', desc: 'Explosive but very risky',   heatMult: 1.50, hypeBoostMult: 1.50, successMod: -0.15, costMult: 1.30 },
+};
+
+export interface StrengthMod {
+  label:         string;
+  desc:          string;
+  heatMult:      number;
+  hypeBoostMult: number;
+  successMod:    number;
+  costMult:      number;
+}
+
+export const STRENGTH_MODS: Record<StoryStrength, StrengthMod> = {
+  low:    { label: 'Soft Push',  desc: 'Cheaper, safer, weaker',  heatMult: 0.60, hypeBoostMult: 0.50, successMod: +0.10, costMult: 0.60 },
+  medium: { label: 'Balanced',   desc: 'Standard risk and reward', heatMult: 1.00, hypeBoostMult: 1.00, successMod:  0.00, costMult: 1.00 },
+  high:   { label: 'Hard Push',  desc: 'Expensive, strong, risky', heatMult: 1.60, hypeBoostMult: 1.70, successMod: -0.12, costMult: 1.50 },
+};
+
+export interface NewsManipPreview {
+  cost:             number;
+  successChance:    number;
+  hypeOnSuccess:    number;
+  heatOnPublish:    number;
+  heatOnFail:       number;
+  trustDrainOnFail: number;
+  credibility:      number;
+}
+
 export interface PendingNewsManip {
   id: string;
-  typeId: 'positive_hype' | 'fear_crash' | 'fake_leak';
+  typeId: NewsManipTypeId;
   headline: string;
   resolveDay: number;
   successChance: number;
@@ -105,53 +239,6 @@ export interface NewsManipResult {
   headline: string;
   success: boolean;
 }
-
-export const NEWS_MANIP_TYPES = [
-  {
-    id: 'positive_hype' as const,
-    label: 'Positive Hype News',
-    emoji: '📈',
-    headline: 'Major partnership rumored for MoonCoin',
-    description: 'Leak a fabricated partnership rumor to drive investor hype and pump the coin.',
-    cost: 5_000,
-    successChance: 0.70,
-    heatOnPublish: 8,
-    heatOnFail: 15,
-    hypeBoostOnSuccess: 0.30,
-    trustDrainOnFail: 0,
-    tags: ['MEDIUM RISK', '$5,000', '70% CHANCE'],
-  },
-  {
-    id: 'fear_crash' as const,
-    label: 'Fear / Negative News',
-    emoji: '⚠️',
-    headline: 'Regulators investigating top competitor',
-    description: 'Spread regulatory fear about a rival. Rattles the market and redirects money to your coin.',
-    cost: 8_000,
-    successChance: 0.60,
-    heatOnPublish: 12,
-    heatOnFail: 22,
-    hypeBoostOnSuccess: 0.20,
-    trustDrainOnFail: 0.08,
-    tags: ['HIGH RISK', '$8,000', '60% CHANCE'],
-  },
-  {
-    id: 'fake_leak' as const,
-    label: 'Fake Insider Leak',
-    emoji: '🎭',
-    headline: 'Insider source: MoonCoin about to 10x',
-    description: 'Plant fabricated insider information. Explosive upside — but if traced, investigation follows.',
-    cost: 12_000,
-    successChance: 0.45,
-    heatOnPublish: 18,
-    heatOnFail: 32,
-    hypeBoostOnSuccess: 0.55,
-    trustDrainOnFail: 0.15,
-    tags: ['EXTREME RISK', '$12,000', '45% CHANCE'],
-  },
-] as const;
-
-export type NewsManipTypeId = 'positive_hype' | 'fear_crash' | 'fake_leak';
 
 export interface BmSaveState {
   unlocked: boolean;
@@ -515,6 +602,69 @@ export class BlackMarketSystem {
       && this.newsManipsToday < this.MAX_NEWS_MANIPS_PER_DAY;
   }
 
+  getNewsCredibility(typeId: NewsManipTypeId, angle: NewsManipAngle, strength: StoryStrength): number {
+    const type = NEWS_MANIP_TYPES.find(t => t.id === typeId);
+    if (!type) return 0;
+    let base = type.successChance * 100;
+    const anglePenalty: Record<NewsManipAngle, number> = {
+      safe_spin: 12, aggressive_hype: -8, fear_campaign: -4, insider_leak: -18,
+    };
+    const strengthPenalty: Record<StoryStrength, number> = { low: 10, medium: 0, high: -12 };
+    base += anglePenalty[angle] ?? 0;
+    base += strengthPenalty[strength] ?? 0;
+    if (this.heat > 60) base -= (this.heat - 60) * 0.5;
+    base += (this.reputation - 1.0) * 30;
+    return Math.max(5, Math.min(95, Math.round(base)));
+  }
+
+  previewNewsManip(typeId: NewsManipTypeId, angle: NewsManipAngle, strength: StoryStrength): NewsManipPreview | null {
+    const type = NEWS_MANIP_TYPES.find(t => t.id === typeId);
+    if (!type) return null;
+    const am = ANGLE_MODS[angle];
+    const sm = STRENGTH_MODS[strength];
+    return {
+      cost:             Math.round(type.cost * am.costMult * sm.costMult),
+      successChance:    Math.max(0.05, Math.min(0.95, type.successChance + am.successMod + sm.successMod)),
+      hypeOnSuccess:    type.hypeBoostOnSuccess * am.hypeBoostMult * sm.hypeBoostMult,
+      heatOnPublish:    Math.round(type.heatOnPublish * am.heatMult * sm.heatMult),
+      heatOnFail:       Math.round(type.heatOnFail    * am.heatMult * sm.heatMult),
+      trustDrainOnFail: type.trustDrainOnFail * sm.heatMult,
+      credibility:      this.getNewsCredibility(typeId, angle, strength),
+    };
+  }
+
+  publishNewsManipFull(
+    typeId: NewsManipTypeId,
+    angle: NewsManipAngle,
+    strength: StoryStrength,
+    headline: string,
+    deductCash: (amount: number) => boolean,
+  ): { success: boolean; message: string } {
+    const type = NEWS_MANIP_TYPES.find(t => t.id === typeId);
+    if (!type || !this.canManipNews()) return { success: false, message: 'Cannot publish right now.' };
+    const am = ANGLE_MODS[angle];
+    const sm = STRENGTH_MODS[strength];
+    const cost = Math.round(type.cost * am.costMult * sm.costMult);
+    if (!deductCash(cost)) return { success: false, message: 'Not enough cash.' };
+
+    this.newsManipCooldownSecs = this.NEWS_MANIP_COOLDOWN;
+    this.newsManipsToday++;
+    this.heat = Math.min(100, this.heat + Math.round(type.heatOnPublish * am.heatMult * sm.heatMult));
+
+    const pending: PendingNewsManip = {
+      id:                 `nm_${Date.now()}`,
+      typeId,
+      headline:           headline.trim() || type.headlines[0],
+      resolveDay:         this.dayCount + 1,
+      successChance:      Math.max(0.05, Math.min(0.95, type.successChance + am.successMod + sm.successMod)),
+      hypeBoostOnSuccess: type.hypeBoostOnSuccess * am.hypeBoostMult * sm.hypeBoostMult,
+      heatOnFail:         Math.round(type.heatOnFail * am.heatMult * sm.heatMult),
+      trustDrainOnFail:   type.trustDrainOnFail * sm.heatMult,
+    };
+    this.pendingNewsManips.push(pending);
+    return { success: true, message: `📰 Published: "${pending.headline}"` };
+  }
+
   publishNewsManip(
     typeId: NewsManipTypeId,
     deductCash: (amount: number) => boolean,
@@ -530,7 +680,7 @@ export class BlackMarketSystem {
     const pending: PendingNewsManip = {
       id:                 `nm_${Date.now()}`,
       typeId,
-      headline:           type.headline,
+      headline:           type.headlines[0],
       resolveDay:         this.dayCount + 1,
       successChance:      type.successChance,
       hypeBoostOnSuccess: type.hypeBoostOnSuccess,
@@ -538,7 +688,7 @@ export class BlackMarketSystem {
       trustDrainOnFail:   type.trustDrainOnFail,
     };
     this.pendingNewsManips.push(pending);
-    return { success: true, message: `📰 Published: "${type.headline}"` };
+    return { success: true, message: `📰 Published: "${type.headlines[0]}"` };
   }
 
   consumeNewsManipResults(): NewsManipResult[] {

@@ -104,6 +104,7 @@ export class IdleSystem {
     if (this.secondsInDay >= this.secondsPerDay) {
       this.secondsInDay = 0;
       this.dayCount++;
+      this.market.resetDayOpenPrices();
       this.fireDayEvents();
     }
 
