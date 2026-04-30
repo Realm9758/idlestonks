@@ -17,6 +17,7 @@ import {
   getStockTags, getRecommendedPlay, getOpportunityScore, getTimingAdvice, getRiskWarning,
   getStorySentence, getConcreteVolatilityInfo, getArchetypePlaybook,
   getBestOpportunity, getWorstHold, getTimingWindow,
+  getDecisionSignal, getTopOpportunities,
   SECTORS, SECTOR_ORDER, SECTOR_MAP, CORRELATED_PAIRS,
 } from './components.ts';
 import { flashPrice, spawnFloatingText, pulseElement, sweepRow, spawnBuyParticles, spawnCashDelta } from './animations.ts';
@@ -246,26 +247,18 @@ export class Renderer {
         <h2>Available Stonks</h2>
         <span id="market-asset-count" class="panel-sub"></span>
       </div>
-      <div id="fear-greed-bar" class="fear-greed-bar">
-        <span class="fg-label fg-fear">😱 FEAR</span>
-        <div class="fg-track">
-          <div id="fg-fill" class="fg-fill" style="width:50%"></div>
+      <div id="fear-greed-bar" class="fear-greed-bar-compact">
+        <span class="fg-label-compact">Sentiment</span>
+        <div class="fg-track-compact">
+          <div id="fg-fill" class="fg-fill-compact" style="width:50%"></div>
         </div>
-        <span class="fg-label fg-greed">🤑 GREED</span>
         <span id="fg-zone" class="fg-zone fg-neutral">NEUTRAL · 50</span>
       </div>
       <div id="market-opportunity-bar" class="opportunity-bar hidden">
-        <div class="opp-entry opp-entry-buy">
-          <span class="opp-label">🚀 BEST ENTRY</span>
-          <span id="opp-best-name" class="opp-asset-name"></span>
-          <span id="opp-best-reason" class="opp-reason"></span>
+        <div class="opp-header-row">
+          <span class="opp-header-label">⭐ Best Opportunities</span>
         </div>
-        <div class="opp-divider"></div>
-        <div class="opp-entry opp-entry-warn hidden" id="opp-warn-entry">
-          <span class="opp-label">⚠️ WATCH</span>
-          <span id="opp-warn-name" class="opp-asset-name"></span>
-          <span id="opp-warn-reason" class="opp-reason"></span>
-        </div>
+        <div id="opp-cards" class="opp-cards"></div>
       </div>
       <div id="asset-list"></div>
     </div>
@@ -729,10 +722,17 @@ export class Renderer {
       changeEl.textContent = formatPct(pct);
       changeEl.className = 'asset-change ' + (pct >= 0 ? 'green' : 'red');
 
-      // ── Single signal badge ────────────────────────────────────────────
-      const sig = getSignalLabel(asset);
-      const sigBadge = row.querySelector('.ind-signal-badge') as HTMLElement | null;
-      if (sigBadge) { sigBadge.textContent = sig.text; sigBadge.className = `stat-badge ${sig.cls} ind-signal-badge`; }
+      // ── Decision signal pill ───────────────────────────────────────────
+      const ds        = getDecisionSignal(asset, activeNews);
+      const pillEl    = row.querySelector<HTMLElement>('.asset-decision-pill');
+      const signalEl  = row.querySelector<HTMLElement>('.adp-signal');
+      const reasonEl  = row.querySelector<HTMLElement>('.adp-reason');
+      if (pillEl && signalEl && reasonEl && pillEl.dataset.sig !== ds.cls) {
+        pillEl.dataset.sig   = ds.cls;
+        pillEl.className     = `asset-decision-pill ${ds.cls}`;
+        signalEl.textContent = ds.signal;
+        reasonEl.textContent = ds.reason;
+      }
 
       // ── Hype bar ───────────────────────────────────────────────────────
       const hypeBarFill  = row.querySelector<HTMLElement>('.hype-bar-fill');
@@ -865,36 +865,29 @@ export class Renderer {
 
   private updateOpportunityBar(market: Market): void {
     const bar = document.getElementById('market-opportunity-bar');
-    if (!bar) return;
+    const cardsEl = document.getElementById('opp-cards');
+    if (!bar || !cardsEl) return;
 
     const unlocked   = market.getUnlockedAssets();
     const activeNews = this.storedNewsSystem?.getActive() ?? [];
+    const tops = getTopOpportunities(unlocked, activeNews, 2);
 
-    const best  = getBestOpportunity(unlocked, activeNews);
-    const worst = getWorstHold(unlocked.filter(a => a.owned > 0));
+    if (tops.length === 0) { bar.classList.add('hidden'); return; }
 
-    const bestNameEl   = document.getElementById('opp-best-name');
-    const bestReasonEl = document.getElementById('opp-best-reason');
-    if (best && bestNameEl && bestReasonEl) {
-      bestNameEl.textContent   = `${best.asset.emoji} ${best.asset.name}`;
-      bestReasonEl.textContent = best.reason;
-      bar.classList.remove('hidden');
-    }
+    bar.classList.remove('hidden');
+    const newHtml = tops.map(({ asset, reason }) => {
+      const ds = getDecisionSignal(asset, activeNews);
+      return `<div class="opp-card">
+        <span class="opp-card-emoji">${asset.emoji}</span>
+        <div class="opp-card-body">
+          <span class="opp-card-name">${asset.name}</span>
+          <span class="opp-card-reason">${reason}</span>
+        </div>
+        <span class="opp-card-signal ${ds.cls}">${ds.signal}</span>
+      </div>`;
+    }).join('');
 
-    const warnEntry   = document.getElementById('opp-warn-entry');
-    const warnNameEl  = document.getElementById('opp-warn-name');
-    const warnReason  = document.getElementById('opp-warn-reason');
-    if (warnEntry && warnNameEl && warnReason) {
-      if (worst) {
-        warnNameEl.textContent  = `${worst.asset.emoji} ${worst.asset.name}`;
-        warnReason.textContent  = worst.reason;
-        warnEntry.classList.remove('hidden');
-        (bar.querySelector('.opp-divider') as HTMLElement | null)?.classList.remove('hidden');
-      } else {
-        warnEntry.classList.add('hidden');
-        (bar.querySelector('.opp-divider') as HTMLElement | null)?.classList.add('hidden');
-      }
-    }
+    if (cardsEl.innerHTML !== newHtml) cardsEl.innerHTML = newHtml;
   }
 
   // ── Fear & Greed Index ────────────────────────────────────────────────────
@@ -975,51 +968,31 @@ export class Renderer {
     const row = createEl('div', 'asset-row');
     row.dataset.id = asset.id;
 
-    // Derive short ticker from id (e.g. catcoin → CAT)
     const ticker = asset.id.replace(/_/g, '').slice(0, 4).toUpperCase();
 
-    const divBadge = asset.dividendRate > 0
-      ? `<span class="asset-div-badge">💰 ${(asset.dividendRate * 100).toFixed(2)}%/day</span>`
-      : '';
-    const bleedBadge = asset.carryingCost > 0
-      ? `<span class="asset-bleed-badge">💸 ${(asset.carryingCost * 60 * 100).toFixed(2)}%/day cost</span>`
-      : '';
-
     row.innerHTML = `
-      <div class="asset-card-top">
+      <div class="asset-card-main">
         <div class="asset-left">
           <div class="asset-icon-wrap">${asset.emoji}</div>
-          <div class="asset-info">
+          <div class="asset-info-compact">
             <div class="asset-name-row">
               <span class="asset-name">${asset.name}</span>
               <span class="asset-ticker">${ticker}</span>
               <span class="asset-trend hidden"></span>
             </div>
-            <div class="asset-archetype-row">
-              <span class="asset-archetype ${asset.archetypeClass}">${asset.archetype}</span>
-              ${divBadge}${bleedBadge}
-            </div>
-            <div class="asset-buy-reason">${asset.buyReason}</div>
-            <div class="asset-hype-row">
-              <div class="hype-bar-track">
-                <div class="hype-bar-fill hype-fill-cold" style="width:0%"></div>
-              </div>
-              <span class="hype-bar-label">HYPE 0%</span>
-            </div>
-            <div class="asset-timing tw-neutral">⏳ WATCHING</div>
-            <div class="asset-badge-row">
-              <span class="stat-badge sl-muted ind-signal-badge">— —</span>
-            </div>
-            <div class="asset-tags"></div>
-            <div class="asset-story"></div>
-            <div class="asset-news-line hidden"></div>
+            <span class="asset-owned"></span>
           </div>
         </div>
         <div class="asset-sparkline"></div>
-        <div class="asset-price-col">
-          <span class="asset-price">$0.00</span>
-          <span class="asset-change green">+0.00%</span>
-          <span class="asset-owned"></span>
+        <div class="asset-right">
+          <div class="asset-price-col">
+            <span class="asset-price">$0.00</span>
+            <span class="asset-change green">+0.00%</span>
+          </div>
+          <div class="asset-decision-pill sig-wait">
+            <span class="adp-signal">Wait</span>
+            <span class="adp-reason">No clear trend</span>
+          </div>
         </div>
       </div>
       <div class="asset-action-row">
@@ -1032,28 +1005,39 @@ export class Renderer {
         <button class="btn btn-sell">Sell</button>
         <button class="btn btn-max btn-sm">Max (0)</button>
         <button class="btn btn-sell-all btn-sm">All (0)</button>
-        <button class="btn-analyse btn-icon" title="Analyse ${asset.name}">🔍</button>
-        <button class="btn-orders btn-icon" title="Limit orders">📋</button>
+        <button class="btn-detail btn-icon" title="More details">⋯</button>
       </div>
-      <div class="limit-order-panel hidden" data-lo-panel="${asset.id}">
-        <div class="lo-form-row">
-          <select class="lo-type">
-            <option value="buy">Buy if ≤</option>
-            <option value="sell">Sell if ≥</option>
-          </select>
-          <span class="lo-dollar">$</span>
-          <input class="lo-price" type="number" min="0.01" step="0.01" placeholder="price" />
-          <span class="lo-x">×</span>
-          <input class="lo-qty" type="number" min="1" step="1" value="1" placeholder="qty" />
-          <button class="btn btn-sm lo-set">Set Order</button>
+      <div class="asset-detail-panel hidden">
+        <div class="adp-hype-section">
+          <div class="hype-bar-track">
+            <div class="hype-bar-fill hype-fill-cold" style="width:0%"></div>
+          </div>
+          <span class="hype-bar-label">HYPE 0%</span>
+          <span class="asset-timing tw-neutral">⏳ WATCHING</span>
         </div>
-        <div class="lo-active-orders" data-lo-list="${asset.id}"></div>
+        <div class="asset-tags"></div>
+        <div class="asset-story"></div>
+        <div class="asset-news-line hidden"></div>
+        <div class="adp-footer">
+          <button class="btn-analyse btn-ghost-sm btn-sm">🔍 Analyse</button>
+          <button class="btn-orders btn-ghost-sm btn-sm">📋 Orders</button>
+        </div>
+        <div class="limit-order-panel hidden" data-lo-panel="${asset.id}">
+          <div class="lo-form-row">
+            <select class="lo-type">
+              <option value="buy">Buy if ≤</option>
+              <option value="sell">Sell if ≥</option>
+            </select>
+            <span class="lo-dollar">$</span>
+            <input class="lo-price" type="number" min="0.01" step="0.01" placeholder="price" />
+            <span class="lo-x">×</span>
+            <input class="lo-qty" type="number" min="1" step="1" value="1" placeholder="qty" />
+            <button class="btn btn-sm lo-set">Set Order</button>
+          </div>
+          <div class="lo-active-orders" data-lo-list="${asset.id}"></div>
+        </div>
       </div>
     `;
-
-    const _sig = getSignalLabel(asset);
-    const _sb2 = row.querySelector('.ind-signal-badge') as HTMLElement;
-    _sb2.textContent = _sig.text; _sb2.className = `stat-badge ${_sig.cls} ind-signal-badge`;
 
     const qtyInput = row.querySelector('.qty-input') as HTMLInputElement;
     row.querySelector('.btn-qty-dec')!.addEventListener('click', () => {
@@ -1093,7 +1077,6 @@ export class Renderer {
       const ev = new CustomEvent('open-insight', { detail: asset.id, bubbles: true });
       row.dispatchEvent(ev);
     });
-
     row.querySelector('.btn-orders')!.addEventListener('click', (e) => {
       e.stopPropagation();
       const panel = row.querySelector<HTMLElement>(`[data-lo-panel="${asset.id}"]`);
@@ -1108,14 +1091,20 @@ export class Renderer {
         this.openLimitOrderId = asset.id;
       }
     });
-
+    row.querySelector('.btn-detail')!.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const detailPanel = row.querySelector<HTMLElement>('.asset-detail-panel');
+      if (!detailPanel) return;
+      const nowOpen = detailPanel.classList.toggle('hidden') === false;
+      (e.currentTarget as HTMLElement).textContent = nowOpen ? '✕' : '⋯';
+    });
     row.querySelector('.lo-set')!.addEventListener('click', () => {
-      const typeEl = row.querySelector<HTMLSelectElement>('.lo-type')!;
+      const typeEl  = row.querySelector<HTMLSelectElement>('.lo-type')!;
       const priceEl = row.querySelector<HTMLInputElement>('.lo-price')!;
-      const qtyEl = row.querySelector<HTMLInputElement>('.lo-qty')!;
-      const type = typeEl.value as 'buy' | 'sell';
+      const qtyEl   = row.querySelector<HTMLInputElement>('.lo-qty')!;
+      const type  = typeEl.value as 'buy' | 'sell';
       const price = parseFloat(priceEl.value);
-      const qty = parseInt(qtyEl.value, 10);
+      const qty   = parseInt(qtyEl.value, 10);
       if (isNaN(price) || price <= 0 || isNaN(qty) || qty <= 0) {
         this.showToast('Invalid order — enter a valid price and quantity.', 'error');
         return;

@@ -507,3 +507,81 @@ export function getWorstHold(ownedAssets: Asset[]): OpportunityResult | null {
 
   return { asset: worstAsset, reason };
 }
+
+// ── Decision signal (3-state: Good Entry / Wait / Risky) ─────────────────────
+//
+// The single most important signal on each card. Scannable in under a second.
+// Scored from hype × momentum × risk balance.
+
+export interface DecisionSignal {
+  signal: 'Good Entry' | 'Wait' | 'Risky';
+  cls: 'sig-good' | 'sig-wait' | 'sig-risky';
+  reason: string;
+}
+
+export function getDecisionSignal(asset: Asset, activeNews?: NewsItem[]): DecisionSignal {
+  const { hype, momentum, stability, risk, carryingCost, trend } = asset;
+  const hasPendingNews = activeNews?.some(n => n.targetAssetId === asset.id) ?? false;
+
+  // Risky conditions — check these first to avoid false positives
+  if (momentum < -0.022)
+    return { signal: 'Risky', cls: 'sig-risky', reason: 'Sharp decline — falling knife' };
+  if (hype > 0.72 && momentum < -0.008)
+    return { signal: 'Risky', cls: 'sig-risky', reason: 'Hype peaked, reversal underway' };
+  if (carryingCost > 0 && hype < 0.2 && momentum <= 0)
+    return { signal: 'Risky', cls: 'sig-risky', reason: 'Bleeding daily, no catalyst' };
+  if (risk > 0.82 && hype < 0.3 && momentum < 0.005)
+    return { signal: 'Risky', cls: 'sig-risky', reason: 'High risk, unstable' };
+  if (momentum < -0.010)
+    return { signal: 'Risky', cls: 'sig-risky', reason: 'Negative momentum building' };
+
+  // Good Entry conditions
+  if (hasPendingNews && momentum > 0)
+    return { signal: 'Good Entry', cls: 'sig-good', reason: 'News catalyst + rising momentum' };
+  if (momentum > 0.018 && hype > 0.4)
+    return { signal: 'Good Entry', cls: 'sig-good', reason: 'Hype rising + strong momentum' };
+  if (hype > 0.65 && momentum > 0.003)
+    return { signal: 'Good Entry', cls: 'sig-good', reason: 'High hype with positive momentum' };
+  if (momentum > 0.022)
+    return { signal: 'Good Entry', cls: 'sig-good', reason: 'Strong uptrend active' };
+  if (stability > 0.65 && momentum >= -0.002 && trend > 0)
+    return { signal: 'Good Entry', cls: 'sig-good', reason: 'Stable steady climber' };
+  if (momentum > 0.010)
+    return { signal: 'Good Entry', cls: 'sig-good', reason: 'Rising momentum' };
+  if (hasPendingNews)
+    return { signal: 'Good Entry', cls: 'sig-good', reason: 'News catalyst pending' };
+
+  return { signal: 'Wait', cls: 'sig-wait', reason: 'No clear trend' };
+}
+
+// ── Top opportunities (ranked list for Best Opportunity bar) ──────────────────
+
+export function getTopOpportunities(assets: Asset[], activeNews: NewsItem[], count = 2): OpportunityResult[] {
+  if (assets.length === 0) return [];
+  const pendingIds = new Set(activeNews.map(n => n.targetAssetId));
+
+  const scored = assets.map(asset => {
+    let score = 0;
+    score += asset.momentum * 150;
+    score += asset.hype * 1.2;
+    score += asset.stability * 0.5;
+    score -= asset.carryingCost * 60 * 100 * 3;
+    score += asset.trend * 300;
+    if (pendingIds.has(asset.id)) score += 1.5;
+    if (asset.momentum < -0.01) score -= 2;
+    return { asset, score };
+  }).sort((a, b) => b.score - a.score);
+
+  return scored.slice(0, count).map(({ asset }) => {
+    const a = asset;
+    let reason: string;
+    if (a.momentum > 0.015 && a.hype > 0.4)  reason = 'Momentum + hype aligned';
+    else if (a.momentum > 0.015)              reason = 'Strong upward momentum';
+    else if (pendingIds.has(a.id))            reason = 'News catalyst pending';
+    else if (a.hype > 0.6)                   reason = 'High hype phase';
+    else if (a.stability > 0.65)             reason = 'Safe steady climber';
+    else if (a.trend > 0.004)               reason = 'Strong positive trend';
+    else                                     reason = 'Best available signal';
+    return { asset, reason };
+  });
+}
