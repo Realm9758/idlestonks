@@ -84,6 +84,7 @@ export const LAYOUT_HTML = `
       <button class="tab-btn" data-tab="missions">🎯 Missions<span id="tab-missions-badge" class="tab-badge hidden"></span></button>
       <button class="tab-btn tab-locked" data-tab="bm" id="tab-bm">🔒 Classified<span id="tab-bm-badge" class="tab-badge hidden"></span></button>
       <button class="tab-btn tab-locked hidden" data-tab="hf" id="tab-hf">💼 Hedge Fund<span id="tab-hf-badge" class="tab-badge hidden"></span></button>
+      <button class="tab-btn" data-tab="assets">🏠 Assets</button>
     </div>
     <div class="tab-bar-actions" id="tab-action-btns">
       <button id="btn-yolo" class="btn btn-tab-yolo">🎲 YOLO</button>
@@ -306,6 +307,9 @@ export const LAYOUT_HTML = `
 
   <!-- Hedge fund mount point -->
   <div id="hf-panel-mount" class="hidden"></div>
+
+  <!-- Assets tab mount point -->
+  <div id="assets-panel-mount" class="hidden"></div>
 
   <!-- Floating missions shortcut -->
   <button id="floating-missions-btn" class="fmb-hidden" title="View active missions">

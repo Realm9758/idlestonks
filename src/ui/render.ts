@@ -54,7 +54,7 @@ export class Renderer {
   private openInsightId: string | null = null;
   private bmPanel: BlackMarketPanel | null = null;
   private hfPanel: HedgeFundPanel | null = null;
-  private currentTab: 'main' | 'upgrades' | 'bm' | 'hf' | 'missions' = 'main';
+  private currentTab: 'main' | 'upgrades' | 'bm' | 'hf' | 'missions' | 'assets' = 'main';
   private soundSystem: SoundSystem | null = null;
   private soundPanelOpen = false;
   private storedRankSystem: RankSystem | null = null;
@@ -151,7 +151,7 @@ export class Renderer {
     document.getElementById('tab-bar')!.addEventListener('click', (e) => {
       const btn = (e.target as HTMLElement).closest<HTMLElement>('[data-tab]');
       if (!btn || btn.classList.contains('tab-locked')) return;
-      this.switchTab(btn.dataset.tab as 'main' | 'upgrades' | 'bm' | 'hf' | 'missions');
+      this.switchTab(btn.dataset.tab as 'main' | 'upgrades' | 'bm' | 'hf' | 'missions' | 'assets');
     });
     document.getElementById('floating-missions-btn')!.addEventListener('click', () => {
       this.switchTab('missions');
@@ -430,13 +430,14 @@ export class Renderer {
 
   setBmPanel(panel: BlackMarketPanel): void { this.bmPanel = panel; }
 
-  switchTab(tab: 'main' | 'upgrades' | 'bm' | 'hf' | 'missions'): void {
+  switchTab(tab: 'main' | 'upgrades' | 'bm' | 'hf' | 'missions' | 'assets'): void {
     this.currentTab = tab;
     document.getElementById('main-grid')!.classList.toggle('hidden', tab !== 'main');
     document.getElementById('upgrades-tab-panel')!.classList.toggle('hidden', tab !== 'upgrades');
     document.getElementById('missions-panel-mount')!.classList.toggle('hidden', tab !== 'missions');
     document.getElementById('bm-panel-mount')!.classList.toggle('hidden', tab !== 'bm');
     document.getElementById('hf-panel-mount')!.classList.toggle('hidden', tab !== 'hf');
+    document.getElementById('assets-panel-mount')?.classList.toggle('hidden', tab !== 'assets');
     document.querySelectorAll<HTMLElement>('#tab-bar [data-tab]').forEach(btn => {
       btn.classList.remove('tab-active');
       if (btn.dataset.tab === tab) btn.classList.add('tab-active');

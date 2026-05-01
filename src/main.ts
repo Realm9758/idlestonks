@@ -21,6 +21,9 @@ import { MissionPanel } from './ui/MissionPanel.ts';
 import { getTradeInsight } from './ui/components.ts';
 import { screenFlash, screenShake, spawnBigSellCelebration, showEventFlashBanner } from './ui/animations.ts';
 import { AchievementSystem } from './systems/AchievementSystem.ts';
+import { PropertySystem } from './systems/PropertySystem.ts';
+import { MarketAccessSystem } from './systems/MarketAccessSystem.ts';
+import { AssetsPanel } from './ui/AssetsPanel.ts';
 
 // Cash gifted to the player on each rank-up — makes the moment feel rewarding
 const RANK_UP_BONUS: Record<string, number> = {
@@ -49,6 +52,8 @@ const tutorialHasSave = tutorialSystem.load();
 const missionSystem      = new MissionSystem();
 const achievementSystem  = new AchievementSystem();
 const qteOverlay         = new QteOverlay();
+const propertySystem     = new PropertySystem();
+const marketAccessSystem = new MarketAccessSystem();
 
 // ── Idle system ───────────────────────────────────────────────────────────────
 // Created before renderer so save restoration can set day state before first render.
@@ -194,6 +199,25 @@ const idleSystem = new IdleSystem(
       // Mission autosave every 30 seconds
       if (tick % 30 === 0) {
         localStorage.setItem('idlestonks_missions', JSON.stringify(missionSystem.saveState()));
+      }
+
+      // Property income — fire once per day
+      if (secondsInDay === 1 && propertySystem.properties.length > 0) {
+        const propResult = propertySystem.dayTick();
+        if (propResult.income !== 0) {
+          player.cash += propResult.income;
+          if (propResult.income > 0) player.totalEarned += propResult.income;
+          const label = propResult.income >= 0 ? `+$${propResult.income.toLocaleString()}` : `-$${Math.abs(propResult.income).toLocaleString()}`;
+          renderer.showToast(`🏠 Property income: ${label}`, propResult.income >= 0 ? 'success' : 'error');
+        }
+        for (const ev of propResult.events) {
+          eventSystem.addEntry(ev.message, ev.type === 'income' ? 'good' : 'bad');
+        }
+        // Autosave property state
+        localStorage.setItem('idlestonks_properties', JSON.stringify(propertySystem.saveState()));
+        localStorage.setItem('idlestonks_market_access', JSON.stringify(marketAccessSystem.saveState()));
+        // Refresh the assets panel if visible
+        assetsPanel.refresh(player.cash, rankSystem.getHighestRankIndex(), player.getNetWorth(market));
       }
 
       // Net worth history — record once per day
@@ -466,6 +490,8 @@ const renderer = new Renderer({
     saveSystem.clearSave();
     tutorialSystem.clearSave();
     localStorage.removeItem('idlestonks_missions');
+    localStorage.removeItem('idlestonks_properties');
+    localStorage.removeItem('idlestonks_market_access');
     location.reload();
   },
 
@@ -552,6 +578,72 @@ renderer.setSoundSystem(soundSystem);
 const missionPanel = new MissionPanel();
 missionPanel.mount(document.getElementById('missions-panel-mount')!);
 qteOverlay.mount(document.body);
+
+// ── Assets panel (Properties + Market Access) ─────────────────────────────────
+
+const assetsPanel = new AssetsPanel(propertySystem, marketAccessSystem, {
+  onBuyProperty(configId) {
+    const result = propertySystem.buy(configId, player.cash);
+    renderer.showToast(result.message, result.success ? 'success' : 'error');
+    if (result.success) {
+      player.cash -= result.cost;
+      eventSystem.addEntry(result.message, 'good');
+      soundSystem.play('buy');
+      localStorage.setItem('idlestonks_properties', JSON.stringify(propertySystem.saveState()));
+      assetsPanel.refresh(player.cash, rankSystem.getHighestRankIndex(), player.getNetWorth(market));
+    }
+  },
+  onUpgradeProperty(configId) {
+    const result = propertySystem.upgrade(configId, player.cash);
+    renderer.showToast(result.message, result.success ? 'success' : 'error');
+    if (result.success) {
+      player.cash -= result.cost;
+      eventSystem.addEntry(result.message, 'good');
+      soundSystem.play('rank_up');
+      localStorage.setItem('idlestonks_properties', JSON.stringify(propertySystem.saveState()));
+      assetsPanel.refresh(player.cash, rankSystem.getHighestRankIndex(), player.getNetWorth(market));
+    }
+  },
+  onUnlockMarket(marketId) {
+    const nw = player.getNetWorth(market);
+    const result = marketAccessSystem.unlock(marketId, player.cash, rankSystem.getHighestRankIndex(), nw);
+    renderer.showToast(result.message, result.success ? 'success' : 'error');
+    if (result.success) {
+      player.cash -= result.cost;
+      for (const id of result.unlockedAssetIds) {
+        const asset = market.getAsset(id);
+        if (asset) asset.isUnlocked = true;
+      }
+      eventSystem.addEntry(result.message, 'good');
+      soundSystem.play('unlock');
+      localStorage.setItem('idlestonks_market_access', JSON.stringify(marketAccessSystem.saveState()));
+      assetsPanel.refresh(player.cash, rankSystem.getHighestRankIndex(), nw);
+    }
+  },
+});
+
+assetsPanel.mount(document.getElementById('assets-panel-mount')!);
+
+// Load saved property + market access state
+(function loadAssetsState() {
+  try {
+    const propRaw = localStorage.getItem('idlestonks_properties');
+    if (propRaw) propertySystem.loadState(JSON.parse(propRaw));
+  } catch { /* noop */ }
+
+  try {
+    const masRaw = localStorage.getItem('idlestonks_market_access');
+    if (masRaw) {
+      const assetIds = marketAccessSystem.loadState(JSON.parse(masRaw));
+      for (const id of assetIds) {
+        const asset = market.getAsset(id);
+        if (asset) asset.isUnlocked = true;
+      }
+    }
+  } catch { /* noop */ }
+
+  assetsPanel.refresh(player.cash, rankSystem.getHighestRankIndex(), player.getNetWorth(market));
+})();
 
 missionSystem.setOnComplete((m) => {
   player.cash += m.cashReward;
