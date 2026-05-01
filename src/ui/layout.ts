@@ -27,6 +27,10 @@ export const LAYOUT_HTML = `
         <span class="stat-label">📊 Net Worth</span>
         <span id="stat-networth" class="stat-value stat-networth">$1,000</span>
       </div>
+      <div class="stat-block nw-sparkline-wrap" id="nw-sparkline-block">
+        <span class="nw-sparkline-label">30-day trend</span>
+        <svg id="nw-sparkline-svg" width="80" height="28"></svg>
+      </div>
       <div class="stat-block rank-block">
         <div class="rank-top-row">
           <span class="stat-label">🏆 Rank</span>
@@ -75,9 +79,9 @@ export const LAYOUT_HTML = `
     <div class="tab-bar-left">
       <button class="tab-btn tab-active" data-tab="main">📊 Market</button>
       <button class="tab-btn" data-tab="upgrades">⬆️ Upgrades</button>
-      <button class="tab-btn" data-tab="missions">🎯 Missions</button>
-      <button class="tab-btn tab-locked" data-tab="bm" id="tab-bm">🔒 Classified</button>
-      <button class="tab-btn tab-locked hidden" data-tab="hf" id="tab-hf">💼 Hedge Fund</button>
+      <button class="tab-btn" data-tab="missions">🎯 Missions<span id="tab-missions-badge" class="tab-badge hidden"></span></button>
+      <button class="tab-btn tab-locked" data-tab="bm" id="tab-bm">🔒 Classified<span id="tab-bm-badge" class="tab-badge hidden"></span></button>
+      <button class="tab-btn tab-locked hidden" data-tab="hf" id="tab-hf">💼 Hedge Fund<span id="tab-hf-badge" class="tab-badge hidden"></span></button>
     </div>
     <div class="tab-bar-actions" id="tab-action-btns">
       <button id="btn-yolo" class="btn btn-tab-yolo">🎲 YOLO</button>
@@ -300,6 +304,11 @@ export const LAYOUT_HTML = `
 
   <!-- Hedge fund mount point -->
   <div id="hf-panel-mount" class="hidden"></div>
+
+  <!-- Floating missions shortcut -->
+  <button id="floating-missions-btn" class="fmb-hidden" title="View active missions">
+    🎯 Missions <span id="fmb-badge" class="hidden">0</span>
+  </button>
 
   <!-- Insight panel background -->
   <div id="insight-bg" class="insight-bg"></div>

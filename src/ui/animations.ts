@@ -113,6 +113,45 @@ export function screenShake(intensity: 'light' | 'heavy' = 'light'): void {
   app.addEventListener('animationend', () => app.classList.remove(cls), { once: true });
 }
 
+// ── Big sell celebration (confetti + large text) ──────────────────────────────
+
+export function spawnBigSellCelebration(profit: number): void {
+  const text = document.createElement('div');
+  text.className = 'big-sell-text';
+  text.textContent = `+$${profit >= 1000 ? `${(profit / 1000).toFixed(1)}K` : profit.toFixed(0)} 💰`;
+  text.style.position = 'fixed';
+  text.style.left = `${window.innerWidth / 2}px`;
+  text.style.top  = `${window.innerHeight / 2}px`;
+  text.style.transform = 'translate(-50%, -50%)';
+  document.body.appendChild(text);
+  text.addEventListener('animationend', () => text.remove(), { once: true });
+
+  const colors = ['#3fb950', '#58a6ff', '#f4c430', '#bc8cff', '#f85149'];
+  for (let i = 0; i < 18; i++) {
+    const piece = document.createElement('div');
+    piece.className = 'confetti-piece';
+    piece.style.background = colors[i % colors.length];
+    piece.style.left = `${window.innerWidth * (0.25 + Math.random() * 0.5)}px`;
+    piece.style.top  = `${window.innerHeight * (0.25 + Math.random() * 0.35)}px`;
+    piece.style.animationDelay = `${Math.random() * 0.3}s`;
+    piece.style.animationDuration = `${0.7 + Math.random() * 0.5}s`;
+    document.body.appendChild(piece);
+    piece.addEventListener('animationend', () => piece.remove(), { once: true });
+  }
+}
+
+// ── Event flash banner ────────────────────────────────────────────────────────
+
+export function showEventFlashBanner(message: string, severity: 'good' | 'bad' | 'chaos'): void {
+  const existing = document.querySelector('.event-flash-banner');
+  if (existing) existing.remove();
+  const banner = document.createElement('div');
+  banner.className = `event-flash-banner banner-${severity}`;
+  banner.textContent = message;
+  document.body.appendChild(banner);
+  banner.addEventListener('animationend', () => banner.remove(), { once: true });
+}
+
 // ── Cash delta float near a stat element (header) ────────────────────────────
 
 export function spawnCashDelta(anchor: HTMLElement, amount: number): void {

@@ -259,6 +259,10 @@ export class BlackMarketPanel {
     if (riskLbl) riskLbl.textContent = `${Math.round(s.heat)}%`;
     g('bm-risk-warn')?.classList.toggle('hidden', s.heat < 85);
 
+    // Pulse the BM panel container when heat is critical
+    const bmMount = document.getElementById('bm-panel-mount');
+    if (bmMount) bmMount.classList.toggle('bm-heat-critical', s.heat >= 75);
+
     const threatBadge = g('bm-threat-badge') as HTMLElement | null;
     if (threatBadge) {
       const lvl = s.getHeatLevel();

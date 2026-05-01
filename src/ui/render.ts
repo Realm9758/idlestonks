@@ -17,7 +17,7 @@ import { renderIntelContent } from './intelModal.ts';
 import { renderNewsPage, refreshNewsPageCountdowns } from './newsPage.ts';
 import {
   updateHeader, updateMarket, updateFearGreed, updateStreak,
-  updatePortfolio, updateNews, updateEvents, updateFooter,
+  updatePortfolio, updateNews, updateEvents, updateFooter, updateNwSparkline,
   type MarketPanelState, type NewsPanelState, type UpgradesPanelState,
 } from './panelUpdates.ts';
 import { updateUpgradesTab } from './upgradesPanel.ts';
@@ -153,6 +153,18 @@ export class Renderer {
       if (!btn || btn.classList.contains('tab-locked')) return;
       this.switchTab(btn.dataset.tab as 'main' | 'upgrades' | 'bm' | 'hf' | 'missions');
     });
+    document.getElementById('floating-missions-btn')!.addEventListener('click', () => {
+      this.switchTab('missions');
+      this.clearTabBadge('missions');
+    });
+    document.getElementById('tab-bar')!.addEventListener('click', (e) => {
+      const btn = (e.target as HTMLElement).closest<HTMLElement>('[data-tab]');
+      if (!btn) return;
+      const t = btn.dataset.tab as 'main' | 'upgrades' | 'bm' | 'hf' | 'missions';
+      if (t === 'missions') this.clearTabBadge('missions');
+      if (t === 'bm')       this.clearTabBadge('bm');
+      if (t === 'hf')       this.clearTabBadge('hf');
+    }, true); // capture phase so it runs before the other tab listener
     document.getElementById('portfolio-list')!.addEventListener('click', (e) => {
       const btn = (e.target as HTMLElement).closest<HTMLElement>('[data-pf-sell]');
       if (btn?.dataset.pfSell) this.callbacks.onSellAll(btn.dataset.pfSell);
@@ -211,6 +223,7 @@ export class Renderer {
     newsSystem?: NewsSystem,
     rankSystem?: RankSystem,
     investorSystem?: InvestorSystem,
+    nwHistory?: number[],
   ): void {
     if (newsSystem)    this.storedNewsSystem    = newsSystem;
     if (rankSystem)    this.storedRankSystem    = rankSystem;
@@ -235,6 +248,7 @@ export class Renderer {
       this.upgradesState,
     );
     updateFooter(player, tick, day);
+    if (nwHistory) updateNwSparkline(nwHistory);
     if (this.openInsightId) this.refreshInsightPanel(market);
     this.drainToasts();
   }
@@ -429,17 +443,65 @@ export class Renderer {
     });
     if (tab === 'bm' && this.bmPanel && !this.bmPanel.tutorialStarted) this.bmPanel.playTutorial();
     if (tab === 'hf' && this.hfPanel && !this.hfPanel.tutorialStarted) this.hfPanel.playTutorial();
+    // Hide floating btn when on missions tab
+    const fmb = document.getElementById('floating-missions-btn');
+    if (fmb) fmb.classList.toggle('fmb-hidden', tab === 'missions');
+  }
+
+  // ── Tab badges ─────────────────────────────────────────────────────────────
+
+  addTabBadge(tab: 'missions' | 'bm' | 'hf', count?: number): void {
+    const badgeId = `tab-${tab}-badge`;
+    const badge = document.getElementById(badgeId);
+    if (!badge) return;
+    const n = count ?? (parseInt(badge.textContent ?? '0') || 0) + 1;
+    badge.textContent = String(n);
+    badge.classList.remove('hidden');
+    // Also update floating missions button badge
+    if (tab === 'missions') this._updateFloatingMissionsBadge(n);
+  }
+
+  clearTabBadge(tab: 'missions' | 'bm' | 'hf'): void {
+    const badge = document.getElementById(`tab-${tab}-badge`);
+    if (badge) { badge.textContent = '0'; badge.classList.add('hidden'); }
+    if (tab === 'missions') this._updateFloatingMissionsBadge(0);
+  }
+
+  private _updateFloatingMissionsBadge(count: number): void {
+    const fmb = document.getElementById('fmb-badge');
+    if (!fmb) return;
+    if (count > 0) { fmb.textContent = String(count); fmb.classList.remove('hidden'); }
+    else            { fmb.classList.add('hidden'); }
+  }
+
+  updateFloatingMissionsBtn(pendingCount: number): void {
+    const btn = document.getElementById('floating-missions-btn');
+    if (!btn) return;
+    const isVisible = this.currentTab !== 'missions';
+    btn.classList.toggle('fmb-hidden', !isVisible);
+    this._updateFloatingMissionsBadge(pendingCount);
   }
 
   showBlackMarketUnlock(): void {
     const btn = document.getElementById('tab-bm');
-    if (btn) { btn.textContent = '🕵️ Black Market'; btn.classList.remove('tab-locked'); }
+    if (btn) {
+      // Preserve the badge span, only replace text node
+      const badge = btn.querySelector('.tab-badge');
+      btn.innerHTML = '🕵️ Black Market';
+      if (badge) btn.appendChild(badge);
+      btn.classList.remove('tab-locked');
+    }
     this.bmPanel?.triggerUnlockNotif();
   }
 
   revealBlackMarketTab(): void {
     const btn = document.getElementById('tab-bm');
-    if (btn) { btn.textContent = '🕵️ Black Market'; btn.classList.remove('tab-locked'); }
+    if (btn) {
+      const badge = btn.querySelector('.tab-badge');
+      btn.innerHTML = '🕵️ Black Market';
+      if (badge) btn.appendChild(badge);
+      btn.classList.remove('tab-locked');
+    }
   }
 
   setHfPanel(panel: HedgeFundPanel): void { this.hfPanel = panel; }

@@ -19,7 +19,8 @@ import { MissionSystem } from './systems/MissionSystem.ts';
 import { QteOverlay } from './ui/QteOverlay.ts';
 import { MissionPanel } from './ui/MissionPanel.ts';
 import { getTradeInsight } from './ui/components.ts';
-import { screenFlash, screenShake } from './ui/animations.ts';
+import { screenFlash, screenShake, spawnBigSellCelebration, showEventFlashBanner } from './ui/animations.ts';
+import { AchievementSystem } from './systems/AchievementSystem.ts';
 
 // Cash gifted to the player on each rank-up — makes the moment feel rewarding
 const RANK_UP_BONUS: Record<string, number> = {
@@ -45,8 +46,9 @@ const hfSystem        = new HedgeFundSystem();
 const soundSystem     = new SoundSystem();
 const tutorialSystem  = new TutorialSystem();
 const tutorialHasSave = tutorialSystem.load();
-const missionSystem   = new MissionSystem();
-const qteOverlay      = new QteOverlay();
+const missionSystem      = new MissionSystem();
+const achievementSystem  = new AchievementSystem();
+const qteOverlay         = new QteOverlay();
 
 // ── Idle system ───────────────────────────────────────────────────────────────
 // Created before renderer so save restoration can set day state before first render.
@@ -194,16 +196,30 @@ const idleSystem = new IdleSystem(
         localStorage.setItem('idlestonks_missions', JSON.stringify(missionSystem.saveState()));
       }
 
-      renderer.update(market, player, eventSystem, upgradeSystem, tick, day, secondsInDay, secondsPerDay, newsSystem, rankSystem, investorSystem);
+      // Net worth history — record once per day
+      if (secondsInDay === 1) {
+        nwHistory.push(Math.round(nw));
+        if (nwHistory.length > 90) nwHistory.splice(0, nwHistory.length - 90);
+        if (tick % 60 === 1) localStorage.setItem(NW_HISTORY_KEY, JSON.stringify(nwHistory));
+      }
+
+      // Floating missions button — show pending mission count
+      const pendingMissions = missionSystem.getMissions().filter(m => !m.completed).length;
+      renderer.updateFloatingMissionsBtn(pendingMissions);
+
+      // Achievement checks every 5 ticks
+      if (tick % 5 === 0) checkAchievements();
+
+      renderer.update(market, player, eventSystem, upgradeSystem, tick, day, secondsInDay, secondsPerDay, newsSystem, rankSystem, investorSystem, nwHistory);
     },
 
     onEvent(entry) {
       const type = entry.severity === 'bad' ? 'error' : entry.severity === 'good' ? 'success' : 'chaos';
       renderer.showToast(entry.message, type);
       renderer.showEventPopup(entry);
-      if (entry.severity === 'bad')   { soundSystem.play('loss');   screenFlash('bad'); screenShake('light'); }
-      else if (entry.severity === 'good')  { soundSystem.play('profit'); screenFlash('good'); }
-      else if (entry.severity === 'chaos') { soundSystem.play('risk_warning'); screenFlash('chaos'); screenShake('heavy'); }
+      if (entry.severity === 'bad')   { soundSystem.play('loss');   screenFlash('bad'); screenShake('light'); showEventFlashBanner(entry.message, 'bad'); }
+      else if (entry.severity === 'good')  { soundSystem.play('profit'); screenFlash('good'); showEventFlashBanner(entry.message, 'good'); }
+      else if (entry.severity === 'chaos') { soundSystem.play('risk_warning'); screenFlash('chaos'); screenShake('heavy'); showEventFlashBanner(entry.message, 'chaos'); }
     },
 
     onUnlock(name) {
@@ -242,9 +258,11 @@ const idleSystem = new IdleSystem(
     },
 
     onLimitOrderFilled(message) {
-      renderer.showToast(message, 'success');
+      renderer.showToast(`📋 ${message}`, 'success');
       soundSystem.play('profit');
+      screenFlash('good');
       eventSystem.addEntry(message, 'good');
+      renderer.showEventPopup({ id: Date.now(), timestamp: Date.now(), message: `📋 ${message}`, severity: 'good' });
     },
   },
   newsSystem,
@@ -301,8 +319,10 @@ const renderer = new Renderer({
       renderer.animateTrade(assetId, `+${(asset.price * qty).toFixed(0)}`, 'up');
       tutorialSystem.notifyAction('sell');
       missionSystem.onSell(asset.hype, asset.momentum);
+      if (profit >= 1000) spawnBigSellCelebration(profit);
+      const qteThreshold = [50, 150, 300, 600, 1000, 2000][rankSystem.getHighestRankIndex()] ?? 300;
       const saleValue = asset.price * qty;
-      if (saleValue >= 300 && (asset.hype > 0.5 || asset.momentum > 0.012)) {
+      if (saleValue >= qteThreshold && (asset.hype > 0.5 || asset.momentum > 0.012)) {
         const qteType = asset.hype > 0.5 ? 'timing_bar' : 'reaction';
         const qteReason = asset.hype > 0.5 ? `🔥 Hype sell — ${asset.name}` : `📈 Momentum trade — ${asset.name}`;
         qteOverlay.trigger(qteType, qteReason, (r) => {
@@ -351,8 +371,10 @@ const renderer = new Renderer({
       renderer.animateTrade(assetId, `+${(asset.price * qty).toFixed(0)}`, 'up');
       tutorialSystem.notifyAction('sell');
       missionSystem.onSell(asset.hype, asset.momentum);
+      if (profit >= 1000) spawnBigSellCelebration(profit);
+      const qteThreshold = [50, 150, 300, 600, 1000, 2000][rankSystem.getHighestRankIndex()] ?? 300;
       const saleValue = asset.price * qty;
-      if (saleValue >= 300 && (asset.hype > 0.5 || asset.momentum > 0.012)) {
+      if (saleValue >= qteThreshold && (asset.hype > 0.5 || asset.momentum > 0.012)) {
         const qteType = asset.hype > 0.5 ? 'timing_bar' : 'reaction';
         const qteReason = asset.hype > 0.5 ? `🔥 Hype sell — ${asset.name}` : `📈 Momentum trade — ${asset.name}`;
         qteOverlay.trigger(qteType, qteReason, (r) => {
@@ -537,6 +559,9 @@ missionSystem.setOnComplete((m) => {
   renderer.showToast(`🎯 Mission complete: "${m.title}"! +$${m.cashReward.toLocaleString()} +${m.xpReward}XP`, 'success');
   soundSystem.play('profit');
   eventSystem.addEntry(`🎯 Mission "${m.title}" completed! Reward: +$${m.cashReward.toLocaleString()}`, 'good');
+  // Badge the missions tab if it's not currently active
+  renderer.addTabBadge('missions');
+  checkAchievements();
 });
 
 const missionSaveRaw = localStorage.getItem('idlestonks_missions');
@@ -559,6 +584,72 @@ tutorialOverlay.init();
 document.addEventListener('open-insight', (e) => {
   renderer.showInsightPanel((e as CustomEvent<string>).detail, market);
 });
+
+// ── Daily login bonus ─────────────────────────────────────────────────────────
+
+(function checkLoginBonus() {
+  if (!savedData) return; // new player, no bonus
+  const lastLogin = parseInt(localStorage.getItem('idlestonks_last_login') ?? '0', 10);
+  const now = Date.now();
+  const hoursSince = (now - lastLogin) / 3_600_000;
+  localStorage.setItem('idlestonks_last_login', String(now));
+  if (lastLogin === 0 || hoursSince < 20) return; // first load or same-day
+  const nw = player.getNetWorth(market);
+  const bonus = Math.max(500, Math.round(nw * 0.02)); // 2% of net worth, min $500
+  player.cash += bonus;
+  player.totalEarned += bonus;
+  const popup = document.createElement('div');
+  popup.className = 'login-bonus-popup';
+  popup.innerHTML = `
+    <div class="login-bonus-title">🎁 Daily Login Bonus</div>
+    <div class="login-bonus-amount">+$${bonus.toLocaleString()}</div>
+    <div class="login-bonus-sub">Welcome back! Here's 2% of your net worth.</div>
+    <div class="login-bonus-close">Click anywhere to continue →</div>
+  `;
+  document.body.appendChild(popup);
+  const dismiss = () => { popup.style.opacity = '0'; popup.style.transform = 'translate(-50%,-50%) scale(0.9)'; popup.style.transition = 'all 0.25s'; setTimeout(() => popup.remove(), 260); };
+  popup.addEventListener('click', dismiss);
+  setTimeout(dismiss, 5000);
+})();
+
+// ── Net worth history (for header sparkline) ──────────────────────────────────
+
+const NW_HISTORY_KEY = 'idlestonks_nw_history';
+const nwHistory: number[] = (() => {
+  try { return JSON.parse(localStorage.getItem(NW_HISTORY_KEY) ?? '[]'); } catch { return []; }
+})();
+
+// ── Achievement system ────────────────────────────────────────────────────────
+
+const ACH_KEY = 'idlestonks_achievements';
+try { achievementSystem.loadState(JSON.parse(localStorage.getItem(ACH_KEY) ?? '{}')); } catch { /* */ }
+
+achievementSystem.setOnUnlock((ach) => {
+  soundSystem.play('rank_up');
+  // Show achievement toast
+  const toast = document.createElement('div');
+  toast.className = 'achievement-toast';
+  toast.innerHTML = `<div class="ach-toast-header">🏅 Achievement Unlocked</div><div class="ach-toast-title">${ach.emoji} ${ach.title}</div><div class="ach-toast-desc">${ach.description}</div>`;
+  document.body.appendChild(toast);
+  toast.addEventListener('animationend', () => toast.remove(), { once: true });
+  localStorage.setItem(ACH_KEY, JSON.stringify(achievementSystem.saveState()));
+});
+
+function checkAchievements(): void {
+  achievementSystem.check({
+    netWorth:           player.getNetWorth(market),
+    totalEarned:        player.totalEarned,
+    tradeCount:         player.tradeCount,
+    ownedCount:         market.getAllAssets().filter(a => a.owned > 0).length,
+    streak:             player.streak,
+    dayCount:           idleSystem.getDayCount(),
+    rugPullCount:       bmSystem.rugPullCount,
+    missionsCompleted:  missionSystem.completedCount,
+    prestigeCount:      upgradeSystem.prestigeCount,
+    bmHeat:             bmSystem.heat,
+    rankIndex:          rankSystem.getHighestRankIndex(),
+  });
+}
 
 // ── Start ─────────────────────────────────────────────────────────────────────
 

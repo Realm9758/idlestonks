@@ -428,7 +428,7 @@ export class EventSystem {
   constructor() {
     this.nextEvent = weightedRandom(EVENTS);
     this.hintEvent = this.nextEvent;
-    this.nextEventInDays = this.randomInterval();
+    this.nextEventInDays = Math.min(2, this.randomInterval()); // first event within 2 days
     this.driftCountdown = 25 + Math.floor(Math.random() * 11);
   }
 

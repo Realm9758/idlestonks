@@ -121,9 +121,9 @@ export function updateMarket(
     const priceEl = row.querySelector('.asset-price') as HTMLElement;
     const prev = state.lastPrices.get(asset.id) ?? asset.price;
     const delta = (asset.price - prev) / prev;
-    if (Math.abs(delta) > 0.008) {
+    if (Math.abs(delta) > 0.001) {
       flashPrice(priceEl, delta > 0 ? 'up' : 'down');
-      if (Math.abs(delta) > 0.02) sweepRow(row, delta > 0 ? 'up' : 'down');
+      if (Math.abs(delta) > 0.01) sweepRow(row, delta > 0 ? 'up' : 'down');
       state.lastPrices.set(asset.id, asset.price);
     }
     priceEl.textContent = formatCurrency(asset.price);
@@ -217,7 +217,19 @@ export function updateMarket(
     sellAllBtn.disabled = asset.owned === 0;
 
     const ownedEl = row.querySelector('.asset-owned') as HTMLElement;
-    ownedEl.textContent = asset.owned > 0 ? `Own: ${asset.owned}` : '';
+    if (asset.owned > 0) {
+      const basis = state.storedPlayer?.costBasis[asset.id];
+      if (basis && basis > 0) {
+        const plPct = ((asset.price - basis) / basis) * 100;
+        const plSign = plPct >= 0 ? '+' : '';
+        const plCls = plPct >= 0 ? 'owned-pl-pos' : 'owned-pl-neg';
+        ownedEl.innerHTML = `Own: ${asset.owned} <span class="owned-pl ${plCls}">${plSign}${plPct.toFixed(1)}%</span>`;
+      } else {
+        ownedEl.textContent = `Own: ${asset.owned}`;
+      }
+    } else {
+      ownedEl.textContent = '';
+    }
 
     const newsLine = row.querySelector<HTMLElement>('.asset-news-line');
     if (newsLine) {
@@ -335,7 +347,41 @@ export function updatePortfolio(market: Market, player: Player | undefined): voi
   const totalVal = owned.reduce((s, a) => s + a.getValue(), 0);
   document.getElementById('portfolio-total')!.textContent = formatCurrency(totalVal);
 
-  const divBonus = player ? player.getDiversificationBonus(market) : 1;
+  // ── Bonuses strip ──────────────────────────────────────────────────────────
+  let bonusStrip = document.getElementById('portfolio-bonuses-strip');
+  if (!bonusStrip) {
+    bonusStrip = createEl('div', 'bonuses-strip');
+    bonusStrip.id = 'portfolio-bonuses-strip';
+    const panelEl = document.getElementById('portfolio-panel');
+    const listEl  = document.getElementById('portfolio-list');
+    if (panelEl && listEl) panelEl.insertBefore(bonusStrip, listEl);
+  }
+
+  const divBonus    = player ? player.getDiversificationBonus(market) : 1;
+  const streakBonus = player ? player.getStreakBonus() : 1;
+  const earningsM   = player ? player.earningsMultiplier : 1;
+  const chips: string[] = [];
+
+  if (player && player.streak >= 3) {
+    chips.push(`<span class="bonus-chip bonus-chip-streak">🔥 ${player.streak}× Streak · ×${streakBonus.toFixed(2)}</span>`);
+  } else if (player && player.streak >= 1) {
+    chips.push(`<span class="bonus-chip bonus-chip-streak">🔥 ${player.streak}× streak</span>`);
+  }
+
+  if (divBonus > 1) {
+    chips.push(`<span class="bonus-chip bonus-chip-div">🌈 ×${divBonus.toFixed(2)} Div Bonus</span>`);
+  } else if (owned.length < 3) {
+    chips.push(`<span class="bonus-chip bonus-chip-hint">Hold ${3 - owned.length} more for div bonus</span>`);
+  }
+
+  if (earningsM > 1) {
+    chips.push(`<span class="bonus-chip bonus-chip-multi">⭐ ×${earningsM} Prestige</span>`);
+  }
+
+  bonusStrip.innerHTML = chips.join('');
+  bonusStrip.style.display = chips.length > 0 ? 'flex' : 'none';
+
+  const divBonus2 = player ? player.getDiversificationBonus(market) : 1;
   let divEl = document.getElementById('portfolio-div-bonus');
   if (!divEl) {
     divEl = createEl('span', 'div-bonus-badge');
@@ -343,12 +389,12 @@ export function updatePortfolio(market: Market, player: Player | undefined): voi
     const hdr = document.querySelector('#portfolio-panel .panel-header');
     if (hdr) hdr.appendChild(divEl);
   }
-  if (divBonus > 1) {
-    divEl.textContent = `🌈 +${((divBonus - 1) * 100).toFixed(0)}% Div Bonus`;
+  if (divBonus2 > 1) {
+    divEl.textContent = `🌈 +${((divBonus2 - 1) * 100).toFixed(0)}% Div Bonus`;
     divEl.className = 'div-bonus-badge div-bonus-active';
   } else {
-    divEl.textContent = `Hold 3+ assets for sell bonus`;
-    divEl.className = 'div-bonus-badge div-bonus-hint';
+    divEl.textContent = '';
+    divEl.className = 'div-bonus-badge';
   }
 
   if (owned.length === 0) {
@@ -501,6 +547,28 @@ export function updateEvents(
     el.appendChild(createEl('span', 'event-time', timeAgo(entry.timestamp)));
     container.appendChild(el);
   }
+}
+
+// ── Net Worth Sparkline ────────────────────────────────────────────────────────
+
+export function updateNwSparkline(history: number[]): void {
+  const svgEl = document.getElementById('nw-sparkline-svg') as SVGSVGElement | null;
+  if (!svgEl || history.length < 2) return;
+  const pts = history.slice(-30);
+  const W = 80; const H = 28; const pad = 2;
+  const min = Math.min(...pts);
+  const max = Math.max(...pts);
+  const range = max - min || min * 0.01 || 1;
+  const isUp = pts[pts.length - 1] >= pts[0];
+  const color = isUp ? '#3fb950' : '#f85149';
+  const toXY = (p: number, i: number) => {
+    const x = (i / (pts.length - 1)) * W;
+    const y = H - pad - ((p - min) / range) * (H - pad * 2);
+    return `${x.toFixed(1)},${y.toFixed(1)}`;
+  };
+  const points = pts.map(toXY).join(' ');
+  const [lx, ly] = toXY(pts[pts.length - 1], pts.length - 1).split(',');
+  svgEl.innerHTML = `<polyline points="${points}" fill="none" stroke="${color}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><circle cx="${lx}" cy="${ly}" r="2" fill="${color}"/>`;
 }
 
 // ── Footer ─────────────────────────────────────────────────────────────────────

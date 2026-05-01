@@ -1,0 +1,338 @@
+/* ── Improvements CSS ─────────────────────────────────────────────────────── */
+
+/* ── Owned P&L badge on market cards ─────────────────────────────────────── */
+
+.owned-pl {
+  font-size: 10px;
+  font-weight: 700;
+  padding: 0 4px;
+  border-radius: 3px;
+  margin-left: 4px;
+}
+.owned-pl-pos { color: var(--green); }
+.owned-pl-neg { color: var(--red); }
+
+/* ── Active bonuses strip (portfolio panel) ───────────────────────────────── */
+
+.bonuses-strip {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  padding: 6px 10px 8px;
+  border-bottom: 1px solid var(--border);
+}
+
+.bonus-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 10px;
+  font-weight: 700;
+  padding: 3px 8px;
+  border-radius: 20px;
+  border: 1px solid;
+  letter-spacing: 0.03em;
+  white-space: nowrap;
+}
+
+.bonus-chip-streak {
+  background: rgba(248,81,73,0.1);
+  border-color: rgba(248,81,73,0.35);
+  color: #f85149;
+}
+.bonus-chip-div {
+  background: rgba(88,166,255,0.1);
+  border-color: rgba(88,166,255,0.35);
+  color: #58a6ff;
+}
+.bonus-chip-multi {
+  background: rgba(188,140,255,0.1);
+  border-color: rgba(188,140,255,0.35);
+  color: #bc8cff;
+}
+.bonus-chip-hint {
+  background: transparent;
+  border-color: var(--border);
+  color: var(--text-muted);
+  font-weight: 400;
+}
+
+/* ── BM heat pulse ────────────────────────────────────────────────────────── */
+
+@keyframes heat-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(248,81,73,0); }
+  50%       { box-shadow: 0 0 16px 4px rgba(248,81,73,0.35); }
+}
+
+.bm-heat-critical {
+  animation: heat-pulse 1.2s ease-in-out infinite;
+}
+
+.bm-heat-bar-wrap {
+  position: relative;
+}
+
+/* ── Big sell celebration ─────────────────────────────────────────────────── */
+
+@keyframes big-sell-rise {
+  0%   { opacity: 1; transform: translateY(0) scale(1); }
+  60%  { opacity: 1; transform: translateY(-60px) scale(1.15); }
+  100% { opacity: 0; transform: translateY(-90px) scale(0.9); }
+}
+
+.big-sell-text {
+  position: fixed;
+  font-size: 22px;
+  font-weight: 900;
+  color: #3fb950;
+  text-shadow: 0 0 20px rgba(63,185,80,0.8), 0 2px 8px rgba(0,0,0,0.6);
+  pointer-events: none;
+  z-index: 9999;
+  animation: big-sell-rise 1.4s cubic-bezier(0.25,0.46,0.45,0.94) forwards;
+  letter-spacing: -0.01em;
+  white-space: nowrap;
+}
+
+@keyframes confetti-fall {
+  0%   { opacity: 1; transform: translateY(0) rotate(0deg) scale(1); }
+  100% { opacity: 0; transform: translateY(80px) rotate(360deg) scale(0.5); }
+}
+
+.confetti-piece {
+  position: fixed;
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+  pointer-events: none;
+  z-index: 9998;
+  animation: confetti-fall 1s ease-in forwards;
+}
+
+/* ── Event flash banner ───────────────────────────────────────────────────── */
+
+@keyframes event-banner-in {
+  0%   { opacity: 0; transform: translateY(-100%) scaleY(0.8); }
+  20%  { opacity: 1; transform: translateY(0) scaleY(1); }
+  80%  { opacity: 1; transform: translateY(0) scaleY(1); }
+  100% { opacity: 0; transform: translateY(-20%) scaleY(0.95); }
+}
+
+.event-flash-banner {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 10010;
+  padding: 14px 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  font-size: 15px;
+  font-weight: 800;
+  letter-spacing: 0.03em;
+  animation: event-banner-in 3s ease-in-out forwards;
+  pointer-events: none;
+  text-align: center;
+}
+
+.event-flash-banner.banner-bad {
+  background: linear-gradient(135deg, rgba(248,81,73,0.97), rgba(180,30,30,0.97));
+  color: #fff;
+  border-bottom: 2px solid rgba(255,120,120,0.5);
+  box-shadow: 0 4px 30px rgba(248,81,73,0.5);
+}
+
+.event-flash-banner.banner-good {
+  background: linear-gradient(135deg, rgba(63,185,80,0.97), rgba(25,130,50,0.97));
+  color: #fff;
+  border-bottom: 2px solid rgba(100,220,130,0.5);
+  box-shadow: 0 4px 30px rgba(63,185,80,0.5);
+}
+
+.event-flash-banner.banner-chaos {
+  background: linear-gradient(135deg, rgba(188,140,255,0.97), rgba(100,60,200,0.97));
+  color: #fff;
+  border-bottom: 2px solid rgba(200,160,255,0.5);
+  box-shadow: 0 4px 30px rgba(188,140,255,0.6);
+}
+
+/* ── Floating missions button ─────────────────────────────────────────────── */
+
+#floating-missions-btn {
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  z-index: 500;
+  background: var(--bg-panel);
+  border: 1px solid var(--border-hi);
+  border-radius: 50px;
+  padding: 10px 16px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text);
+  box-shadow: 0 4px 20px rgba(0,0,0,0.45);
+  transition: transform 0.15s, box-shadow 0.15s, border-color 0.15s;
+}
+#floating-missions-btn:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 28px rgba(0,0,0,0.55);
+  border-color: var(--accent);
+}
+#floating-missions-btn.fmb-hidden { display: none; }
+
+#fmb-badge {
+  background: #f85149;
+  color: #fff;
+  font-size: 10px;
+  font-weight: 800;
+  min-width: 18px;
+  height: 18px;
+  border-radius: 9px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 4px;
+}
+#fmb-badge.hidden { display: none; }
+
+/* ── Tab badges ───────────────────────────────────────────────────────────── */
+
+.tab-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: #f85149;
+  color: #fff;
+  font-size: 9px;
+  font-weight: 900;
+  min-width: 16px;
+  height: 16px;
+  border-radius: 8px;
+  padding: 0 3px;
+  margin-left: 4px;
+  vertical-align: middle;
+  line-height: 1;
+}
+
+/* ── Daily login bonus popup ──────────────────────────────────────────────── */
+
+@keyframes login-bonus-in {
+  0%   { opacity: 0; transform: translate(-50%, -50%) scale(0.8) rotate(-3deg); }
+  60%  { opacity: 1; transform: translate(-50%, -50%) scale(1.04) rotate(0deg); }
+  100% { opacity: 1; transform: translate(-50%, -50%) scale(1) rotate(0deg); }
+}
+
+.login-bonus-popup {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 10020;
+  background: var(--bg-panel);
+  border: 2px solid var(--green);
+  border-radius: 16px;
+  padding: 32px 40px;
+  text-align: center;
+  min-width: 280px;
+  box-shadow: 0 0 60px rgba(63,185,80,0.3), 0 8px 32px rgba(0,0,0,0.6);
+  animation: login-bonus-in 0.55s cubic-bezier(0.34,1.56,0.64,1) forwards;
+  cursor: pointer;
+}
+.login-bonus-title {
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--green);
+  margin-bottom: 10px;
+  font-weight: 700;
+}
+.login-bonus-amount {
+  font-size: 32px;
+  font-weight: 900;
+  color: var(--green);
+  text-shadow: 0 0 20px rgba(63,185,80,0.5);
+  margin-bottom: 8px;
+}
+.login-bonus-sub {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-bottom: 16px;
+}
+.login-bonus-close {
+  font-size: 10px;
+  color: var(--text-muted);
+  letter-spacing: 0.05em;
+}
+
+/* ── Net worth sparkline in header ───────────────────────────────────────── */
+
+.nw-sparkline-wrap {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 3px;
+}
+
+.nw-sparkline-label {
+  font-size: 9px;
+  color: var(--text-muted);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  font-weight: 600;
+}
+
+#nw-sparkline-svg {
+  display: block;
+  opacity: 0.85;
+}
+
+/* ── Achievement toast ───────────────────────────────────────────────────── */
+
+@keyframes ach-in {
+  0%   { opacity: 0; transform: translateX(120px); }
+  20%  { opacity: 1; transform: translateX(0); }
+  80%  { opacity: 1; transform: translateX(0); }
+  100% { opacity: 0; transform: translateX(120px); }
+}
+
+.achievement-toast {
+  position: fixed;
+  right: 20px;
+  bottom: 80px;
+  z-index: 9000;
+  background: var(--bg-panel);
+  border: 1px solid var(--gold);
+  border-radius: 12px;
+  padding: 12px 16px;
+  min-width: 240px;
+  max-width: 300px;
+  box-shadow: 0 0 30px rgba(212,167,44,0.25), 0 4px 20px rgba(0,0,0,0.5);
+  animation: ach-in 4.5s ease-in-out forwards;
+  pointer-events: none;
+}
+
+.ach-toast-header {
+  font-size: 9px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--gold);
+  font-weight: 700;
+  margin-bottom: 4px;
+}
+
+.ach-toast-title {
+  font-size: 14px;
+  font-weight: 800;
+  color: var(--text);
+  margin-bottom: 2px;
+}
+
+.ach-toast-desc {
+  font-size: 11px;
+  color: var(--text-muted);
+}
