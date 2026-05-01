@@ -1,10 +1,30 @@
 import type { TutorialSystem, TutorialStep } from '../systems/TutorialSystem.ts';
 
-const INTRO_MESSAGES = [
-  "yo… you ever tried investing? 📈",
-  "you can make serious money if you know what you're doing",
-  "I'll walk you through the basics — it's actually pretty simple",
-];
+// Welcome modal shown immediately to brand-new players
+const WELCOME_HTML = `
+<div id="tut-welcome-overlay" class="tut-welcome-overlay">
+  <div class="tut-welcome-card">
+    <div class="tut-welcome-logo">📈 IdleStonks</div>
+    <div class="tut-welcome-sub">Meme Market Simulator</div>
+    <div class="tut-welcome-body">
+      <p class="tut-welcome-desc">
+        You're a trader with <strong>$1,000</strong> and a dream.<br>
+        Buy and sell meme stocks, ride market events, and grow your net worth to <strong>$1,000,000+</strong>.
+      </p>
+      <div class="tut-welcome-pills">
+        <span class="tut-wpill">📊 Prices move every second</span>
+        <span class="tut-wpill">⚡ Events crash &amp; pump markets</span>
+        <span class="tut-wpill">📰 Breaking news = opportunities</span>
+        <span class="tut-wpill">💼 Grow your portfolio</span>
+        <span class="tut-wpill">⬆️ Unlock upgrades &amp; features</span>
+      </div>
+    </div>
+    <div class="tut-welcome-actions">
+      <button id="tut-welcome-start" class="tut-welcome-btn-primary">📊 Show me how →</button>
+      <button id="tut-welcome-skip"  class="tut-welcome-btn-skip">I know what I'm doing — skip</button>
+    </div>
+  </div>
+</div>`;
 
 export class TutorialOverlay {
   private readonly sys: TutorialSystem;
@@ -24,7 +44,7 @@ export class TutorialOverlay {
     if (this.sys.isDone) return;
 
     if (!this.sys.introDone) {
-      setTimeout(() => this._showNotif(), 1500);
+      this._showWelcomeModal();
     } else {
       // Resume mid-tutorial after reload
       this.render();
@@ -200,74 +220,23 @@ export class TutorialOverlay {
     skip.textContent = 'Skip tutorial';
     skip.addEventListener('click', () => this.sys.skip());
     document.body.appendChild(skip);
+  }
 
-    // Intro notification badge (bottom-right)
-    const notif = document.createElement('div');
-    notif.id = 'tut-notif';
-    notif.className = 'tut-notif hidden';
-    notif.innerHTML = `<span class="tut-notif-ping"></span>📱 New Message`;
-    notif.addEventListener('click', () => this._openIntroChat());
-    document.body.appendChild(notif);
+  // ── Welcome modal ──────────────────────────────────────────────────────────
 
-    // Intro chat messenger popup
-    const messenger = document.createElement('div');
-    messenger.id = 'tut-messenger';
-    messenger.className = 'tut-messenger hidden';
-    messenger.innerHTML = `
-      <div class="tut-msg-hdr">
-        <div class="tut-msg-contact">
-          <span class="tut-contact-dot">●</span>
-          <span class="tut-contact-name">your_friend</span>
-        </div>
-        <button id="tut-msg-close" class="btn-icon" style="color:#555">✕</button>
-      </div>
-      <div id="tut-msg-body" class="tut-msg-body"></div>
-      <div id="tut-msg-cta" class="tut-msg-cta hidden">
-        <button id="tut-msg-start" class="tut-msg-start-btn">📊 ok, show me →</button>
-      </div>`;
-    document.body.appendChild(messenger);
+  private _showWelcomeModal(): void {
+    const wrap = document.createElement('div');
+    wrap.innerHTML = WELCOME_HTML;
+    document.body.appendChild(wrap.firstElementChild!);
 
-    document.getElementById('tut-msg-close')!.addEventListener('click', () =>
-      document.getElementById('tut-messenger')!.classList.add('hidden'),
-    );
-    document.getElementById('tut-msg-start')!.addEventListener('click', () => {
-      document.getElementById('tut-messenger')!.classList.add('hidden');
+    document.getElementById('tut-welcome-start')!.addEventListener('click', () => {
+      document.getElementById('tut-welcome-overlay')?.remove();
       this.sys.markIntroDone();
     });
-  }
-
-  // ── Intro chat ─────────────────────────────────────────────────────────────
-
-  private _showNotif(): void {
-    document.getElementById('tut-notif')?.classList.remove('hidden');
-  }
-
-  private _openIntroChat(): void {
-    document.getElementById('tut-notif')!.classList.add('hidden');
-    const messenger = document.getElementById('tut-messenger')!;
-    const body      = document.getElementById('tut-msg-body')!;
-    const cta       = document.getElementById('tut-msg-cta')!;
-    messenger.classList.remove('hidden');
-    body.innerHTML = '';
-    cta.classList.add('hidden');
-
-    let delay = 400;
-    for (const text of INTRO_MESSAGES) {
-      const d = delay;
-      delay += 900 + text.length * 18;
-      setTimeout(() => {
-        // Reuse the BM chat bubble styles for consistency
-        const row = document.createElement('div');
-        row.className = 'bm-msg-row bm-msg-left';
-        const bubble = document.createElement('div');
-        bubble.className = 'bm-bubble bm-bubble-left';
-        bubble.textContent = text;
-        row.appendChild(bubble);
-        body.appendChild(row);
-        body.scrollTop = body.scrollHeight;
-      }, d);
-    }
-    setTimeout(() => cta.classList.remove('hidden'), delay + 400);
+    document.getElementById('tut-welcome-skip')!.addEventListener('click', () => {
+      document.getElementById('tut-welcome-overlay')?.remove();
+      this.sys.skip();
+    });
   }
 
   // ── Completion ─────────────────────────────────────────────────────────────

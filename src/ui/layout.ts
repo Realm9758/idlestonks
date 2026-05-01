@@ -60,7 +60,8 @@ export const LAYOUT_HTML = `
     </div>
     <div id="sound-panel" class="sound-panel hidden">
       <div class="sp-row">
-        <button id="sp-mute" class="btn btn-ghost-sm sp-mute-btn">🔊 Muted: OFF</button>
+        <button id="sp-mute" class="btn btn-ghost-sm sp-mute-btn">🔊 Sound: ON</button>
+        <button id="sp-test" class="btn btn-ghost-sm" title="Play a test sound">▶ Test</button>
       </div>
       <div class="sp-row">
         <label class="sp-label">Master</label>
@@ -72,6 +73,7 @@ export const LAYOUT_HTML = `
         <input id="sp-sfx" type="range" min="0" max="1" step="0.05" value="0.8" class="sp-slider" />
         <span id="sp-sfx-val" class="sp-val">80%</span>
       </div>
+      <div class="sp-hint">Click "▶ Test" to verify sound works</div>
     </div>
   </header>
 

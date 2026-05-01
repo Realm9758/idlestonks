@@ -58,6 +58,13 @@ export class SoundSystem {
   setSfxVolume(v: number):    void { this.settings.sfxVolume    = Math.max(0, Math.min(1, v)); this._save(); }
   toggleMute():               void { this.settings.muted = !this.settings.muted; this._save(); }
 
+  // Must be called from a user-gesture handler to unlock the AudioContext in browsers.
+  unlock(): void {
+    try {
+      this._ensure();
+    } catch { /* noop */ }
+  }
+
   // ── AudioContext bootstrap ─────────────────────────────────────────────────
 
   private _ensure(): void {

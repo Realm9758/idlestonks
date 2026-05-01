@@ -575,17 +575,19 @@ export class Renderer {
       sfx.value      = String(ss.sfxVolume);
       masterV.textContent = `${Math.round(ss.masterVolume * 100)}%`;
       sfxV.textContent    = `${Math.round(ss.sfxVolume    * 100)}%`;
-      muteBtn.textContent = ss.muted ? '🔇 Muted: ON' : '🔊 Muted: OFF';
+      muteBtn.textContent = ss.muted ? '🔇 Sound: OFF' : '🔊 Sound: ON';
       muteBtn.classList.toggle('sp-muted', ss.muted);
     };
     sync();
-    muteBtn.addEventListener('click', () => { ss.toggleMute(); sync(); });
-    master.addEventListener('input', () => { ss.setMasterVolume(parseFloat(master.value)); masterV.textContent = `${Math.round(ss.masterVolume * 100)}%`; });
-    sfx.addEventListener('input',    () => { ss.setSfxVolume(parseFloat(sfx.value));       sfxV.textContent    = `${Math.round(ss.sfxVolume    * 100)}%`; });
+    muteBtn.addEventListener('click', () => { ss.unlock(); ss.toggleMute(); sync(); });
+    master.addEventListener('input', () => { ss.unlock(); ss.setMasterVolume(parseFloat(master.value)); masterV.textContent = `${Math.round(ss.masterVolume * 100)}%`; });
+    sfx.addEventListener('input',    () => { ss.unlock(); ss.setSfxVolume(parseFloat(sfx.value));       sfxV.textContent    = `${Math.round(ss.sfxVolume    * 100)}%`; });
+    document.getElementById('sp-test')?.addEventListener('click', () => { ss.unlock(); ss.play('profit'); });
     document.getElementById('btn-sound')!.addEventListener('click', (e) => {
       e.stopPropagation();
       this.soundPanelOpen = !this.soundPanelOpen;
       document.getElementById('sound-panel')!.classList.toggle('hidden', !this.soundPanelOpen);
+      if (this.soundPanelOpen) ss.unlock(); // unlock AudioContext on panel open
     });
     document.addEventListener('click', () => {
       if (this.soundPanelOpen) { this.soundPanelOpen = false; document.getElementById('sound-panel')!.classList.add('hidden'); }
