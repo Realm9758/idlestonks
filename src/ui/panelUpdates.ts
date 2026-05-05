@@ -8,9 +8,10 @@ import type { InvestorSystem } from '../systems/InvestorSystem.ts';
 import type { Asset } from '../core/Asset.ts';
 import {
   formatCurrency, formatPct, timeAgo, createEl,
-  getDecisionSignal, getStockTags, getStorySentence, getTimingWindow, getTopOpportunities,
+  getDecisionSignal, getStableDecisionSignal, getStockTags, getStorySentence, getTimingWindow, getTopOpportunities,
   SECTORS, SECTOR_ORDER, SECTOR_MAP,
 } from './components.ts';
+import type { SignalHysteresisEntry } from './components.ts';
 import { flashPrice, sweepRow, spawnCashDelta } from './animations.ts';
 import { buildAssetRow, type AssetRowCallbacks, type AssetRowMutableState } from './assetRow.ts';
 import { buildSparklineSvg } from './sparkline.ts';
@@ -26,6 +27,7 @@ export interface MarketPanelState {
   assetRowCallbacks: AssetRowCallbacks;
   assetRowMutableState: AssetRowMutableState;
   storedPlayer: Player | null;
+  signalHistory: Map<string, SignalHysteresisEntry>;
 }
 
 export interface NewsPanelState {
@@ -136,7 +138,7 @@ export function updateMarket(
     changeEl.textContent = formatPct(pct);
     changeEl.className = 'asset-change ' + (pct >= 0 ? 'green' : 'red');
 
-    const ds       = getDecisionSignal(asset, activeNews);
+    const ds       = getStableDecisionSignal(asset, activeNews, state.signalHistory);
     const pillEl   = row.querySelector<HTMLElement>('.asset-decision-pill');
     const signalEl = row.querySelector<HTMLElement>('.adp-signal');
     const reasonEl = row.querySelector<HTMLElement>('.adp-reason');
@@ -218,17 +220,41 @@ export function updateMarket(
 
     const ownedEl = row.querySelector('.asset-owned') as HTMLElement;
     if (asset.owned > 0) {
+      const positionValue = asset.price * asset.owned;
       const basis = state.storedPlayer?.costBasis[asset.id];
       if (basis && basis > 0) {
-        const plPct = ((asset.price - basis) / basis) * 100;
-        const plSign = plPct >= 0 ? '+' : '';
-        const plCls = plPct >= 0 ? 'owned-pl-pos' : 'owned-pl-neg';
-        ownedEl.innerHTML = `Own: ${asset.owned} <span class="owned-pl ${plCls}">${plSign}${plPct.toFixed(1)}%</span>`;
+        const plDollar = (asset.price - basis) * asset.owned;
+        const plPct    = ((asset.price - basis) / basis) * 100;
+        const plPos    = plDollar >= 0;
+        const sign     = plPos ? '+' : '−';
+        const plCls    = plPos ? 'owned-pl-pos' : 'owned-pl-neg';
+        const absDollar = Math.abs(plDollar);
+        const dollarStr = absDollar >= 1000
+          ? `$${(absDollar / 1000).toFixed(1)}k`
+          : `$${absDollar.toFixed(absDollar < 10 ? 2 : 0)}`;
+        ownedEl.innerHTML = `
+          <span class="owned-shares">${asset.owned} sh</span>
+          <span class="owned-sep">·</span>
+          <span class="owned-value">${formatCurrency(positionValue)}</span>
+          <span class="owned-pl ${plCls}" title="Unrealized profit/loss vs avg cost $${basis.toFixed(2)}">
+            ${sign}${dollarStr} (${sign}${Math.abs(plPct).toFixed(1)}%)
+          </span>
+        `;
+        ownedEl.classList.add('asset-owned-active');
+        ownedEl.classList.toggle('asset-owned-pos', plPos);
+        ownedEl.classList.toggle('asset-owned-neg', !plPos);
       } else {
-        ownedEl.textContent = `Own: ${asset.owned}`;
+        ownedEl.innerHTML = `
+          <span class="owned-shares">${asset.owned} sh</span>
+          <span class="owned-sep">·</span>
+          <span class="owned-value">${formatCurrency(positionValue)}</span>
+        `;
+        ownedEl.classList.add('asset-owned-active');
+        ownedEl.classList.remove('asset-owned-pos', 'asset-owned-neg');
       }
     } else {
       ownedEl.textContent = '';
+      ownedEl.classList.remove('asset-owned-active', 'asset-owned-pos', 'asset-owned-neg');
     }
 
     const newsLine = row.querySelector<HTMLElement>('.asset-news-line');

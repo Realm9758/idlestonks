@@ -83,7 +83,7 @@
 
 .asset-price  { font-size: 18px; font-weight: 700; color: var(--text); letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
 .asset-change { font-size: 12px; font-weight: 600; }
-.asset-owned  { font-size: 10px; color: var(--text-muted); margin-top: 2px; }
+/* .asset-owned styling lives in improvements.css (inline P/L block) */
 
 /* Action row */
 .asset-action-row {

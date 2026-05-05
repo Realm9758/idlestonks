@@ -118,17 +118,71 @@
   opacity: 0.7;
 }
 
-/* ── Owned P&L badge on market cards ─────────────────────────────────────── */
+/* ── Owned position display ─────────────────────────────────────────────── */
+
+.asset-owned {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11px;
+  font-weight: 600;
+  flex-wrap: wrap;
+  line-height: 1.3;
+}
+
+.asset-owned-active {
+  margin-top: 3px;
+  padding: 2px 7px;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--border);
+  transition: background 0.2s, border-color 0.2s;
+}
+
+.asset-owned-pos {
+  background: rgba(63, 185, 80, 0.08);
+  border-color: rgba(63, 185, 80, 0.28);
+}
+
+.asset-owned-neg {
+  background: rgba(248, 81, 73, 0.06);
+  border-color: rgba(248, 81, 73, 0.25);
+}
+
+.owned-shares {
+  color: var(--text);
+  font-weight: 700;
+  letter-spacing: 0.01em;
+}
+
+.owned-sep {
+  color: var(--border-hi);
+  font-weight: 600;
+}
+
+.owned-value {
+  color: var(--text-muted);
+  font-weight: 600;
+}
 
 .owned-pl {
-  font-size: 10px;
-  font-weight: 700;
-  padding: 0 4px;
-  border-radius: 3px;
-  margin-left: 4px;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.01em;
+  padding: 1px 6px;
+  border-radius: 10px;
+  cursor: help;
 }
-.owned-pl-pos { color: var(--green); }
-.owned-pl-neg { color: var(--red); }
+
+.owned-pl-pos {
+  color: var(--green);
+  background: rgba(63, 185, 80, 0.12);
+}
+
+.owned-pl-neg {
+  color: var(--red);
+  background: rgba(248, 81, 73, 0.12);
+}
 
 /* ── Active bonuses strip (portfolio panel) ───────────────────────────────── */
 

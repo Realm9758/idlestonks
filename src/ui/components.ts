@@ -514,7 +514,7 @@ export function getWorstHold(ownedAssets: Asset[]): OpportunityResult | null {
 // Scored from hype × momentum × risk balance.
 
 export interface DecisionSignal {
-  signal: 'Good Entry' | 'Wait' | 'Risky';
+  signal: 'Buy' | 'Hold' | 'Avoid';
   cls: 'sig-good' | 'sig-wait' | 'sig-risky';
   reason: string;
 }
@@ -525,33 +525,92 @@ export function getDecisionSignal(asset: Asset, activeNews?: NewsItem[]): Decisi
 
   // Risky conditions — check these first to avoid false positives
   if (momentum < -0.022)
-    return { signal: 'Risky', cls: 'sig-risky', reason: 'Sharp decline — falling knife' };
+    return { signal: 'Avoid', cls: 'sig-risky', reason: 'Sharp decline — falling knife' };
   if (hype > 0.72 && momentum < -0.008)
-    return { signal: 'Risky', cls: 'sig-risky', reason: 'Hype peaked, reversal underway' };
+    return { signal: 'Avoid', cls: 'sig-risky', reason: 'Hype peaked, reversal underway' };
   if (carryingCost > 0 && hype < 0.2 && momentum <= 0)
-    return { signal: 'Risky', cls: 'sig-risky', reason: 'Bleeding daily, no catalyst' };
+    return { signal: 'Avoid', cls: 'sig-risky', reason: 'Bleeding daily, no catalyst' };
   if (risk > 0.82 && hype < 0.3 && momentum < 0.005)
-    return { signal: 'Risky', cls: 'sig-risky', reason: 'High risk, unstable' };
+    return { signal: 'Avoid', cls: 'sig-risky', reason: 'High risk, unstable' };
   if (momentum < -0.010)
-    return { signal: 'Risky', cls: 'sig-risky', reason: 'Negative momentum building' };
+    return { signal: 'Avoid', cls: 'sig-risky', reason: 'Negative momentum building' };
 
   // Good Entry conditions
   if (hasPendingNews && momentum > 0)
-    return { signal: 'Good Entry', cls: 'sig-good', reason: 'News catalyst + rising momentum' };
+    return { signal: 'Buy', cls: 'sig-good', reason: 'News catalyst + rising momentum' };
   if (momentum > 0.018 && hype > 0.4)
-    return { signal: 'Good Entry', cls: 'sig-good', reason: 'Hype rising + strong momentum' };
+    return { signal: 'Buy', cls: 'sig-good', reason: 'Hype rising + strong momentum' };
   if (hype > 0.65 && momentum > 0.003)
-    return { signal: 'Good Entry', cls: 'sig-good', reason: 'High hype with positive momentum' };
+    return { signal: 'Buy', cls: 'sig-good', reason: 'High hype with positive momentum' };
   if (momentum > 0.022)
-    return { signal: 'Good Entry', cls: 'sig-good', reason: 'Strong uptrend active' };
+    return { signal: 'Buy', cls: 'sig-good', reason: 'Strong uptrend active' };
   if (stability > 0.65 && momentum >= -0.002 && trend > 0)
-    return { signal: 'Good Entry', cls: 'sig-good', reason: 'Stable steady climber' };
+    return { signal: 'Buy', cls: 'sig-good', reason: 'Stable steady climber' };
   if (momentum > 0.010)
-    return { signal: 'Good Entry', cls: 'sig-good', reason: 'Rising momentum' };
+    return { signal: 'Buy', cls: 'sig-good', reason: 'Rising momentum' };
   if (hasPendingNews)
-    return { signal: 'Good Entry', cls: 'sig-good', reason: 'News catalyst pending' };
+    return { signal: 'Buy', cls: 'sig-good', reason: 'News catalyst pending' };
 
-  return { signal: 'Wait', cls: 'sig-wait', reason: 'No clear trend' };
+  return { signal: 'Hold', cls: 'sig-wait', reason: 'No clear trend' };
+}
+
+// ── Hysteresis: prevent the decision pill from flickering between states ──────
+// A new signal must be observed for SIG_PERSIST_TICKS consecutive evaluations
+// before it replaces the displayed signal. Bypass the delay when escalating to
+// "Avoid" — danger should reach the player immediately.
+
+export interface SignalHysteresisEntry {
+  current: DecisionSignal;
+  pending: DecisionSignal | null;
+  pendingTicks: number;
+}
+
+const SIG_PERSIST_TICKS = 3;
+
+export function getStableDecisionSignal(
+  asset: Asset,
+  activeNews: NewsItem[],
+  history: Map<string, SignalHysteresisEntry>,
+): DecisionSignal {
+  const fresh = getDecisionSignal(asset, activeNews);
+  const entry = history.get(asset.id);
+
+  if (!entry) {
+    history.set(asset.id, { current: fresh, pending: null, pendingTicks: 0 });
+    return fresh;
+  }
+
+  // Same signal as displayed → reset any pending switch and keep current.
+  if (fresh.cls === entry.current.cls) {
+    if (entry.pending) { entry.pending = null; entry.pendingTicks = 0; }
+    // Refresh reason text in case it changed within the same category
+    entry.current = fresh;
+    return entry.current;
+  }
+
+  // Escalation to Avoid bypasses hysteresis — bad news should land immediately.
+  if (fresh.cls === 'sig-risky') {
+    entry.current = fresh;
+    entry.pending = null;
+    entry.pendingTicks = 0;
+    return fresh;
+  }
+
+  // New signal differs — start or continue a pending switch.
+  if (!entry.pending || entry.pending.cls !== fresh.cls) {
+    entry.pending = fresh;
+    entry.pendingTicks = 1;
+  } else {
+    entry.pendingTicks++;
+  }
+
+  if (entry.pendingTicks >= SIG_PERSIST_TICKS) {
+    entry.current = entry.pending;
+    entry.pending = null;
+    entry.pendingTicks = 0;
+  }
+
+  return entry.current;
 }
 
 // ── Top opportunities (ranked list for Best Opportunity bar) ──────────────────

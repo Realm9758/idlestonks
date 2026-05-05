@@ -75,6 +75,7 @@ export class Renderer {
     assetRowCallbacks: null as never,  // set in constructor after callbacks available
     assetRowMutableState: { openLimitOrderId: null },
     storedPlayer: null,
+    signalHistory: new Map(),
   };
   private readonly newsState: NewsPanelState = {
     newsActiveKey: '',
