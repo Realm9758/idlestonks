@@ -24,6 +24,7 @@ import { AchievementSystem } from './systems/AchievementSystem.ts';
 import { PropertySystem } from './systems/PropertySystem.ts';
 import { MarketAccessSystem } from './systems/MarketAccessSystem.ts';
 import { AssetsPanel } from './ui/AssetsPanel.ts';
+import { showMarketUnlockCelebration } from './ui/MarketModals.ts';
 
 // Cash gifted to the player on each rank-up — makes the moment feel rewarding
 const RANK_UP_BONUS: Record<string, number> = {
@@ -217,7 +218,7 @@ const idleSystem = new IdleSystem(
         localStorage.setItem('idlestonks_properties', JSON.stringify(propertySystem.saveState()));
         localStorage.setItem('idlestonks_market_access', JSON.stringify(marketAccessSystem.saveState()));
         // Refresh the assets panel if visible
-        assetsPanel.refresh(player.cash, rankSystem.getHighestRankIndex(), player.getNetWorth(market));
+        assetsPanel.refresh(player.cash, rankSystem.getHighestRankIndex(), player.getNetWorth(market), bmSystem.unlocked);
       }
 
       // Net worth history — record once per day
@@ -581,7 +582,16 @@ qteOverlay.mount(document.body);
 
 // ── Assets panel (Properties + Market Access) ─────────────────────────────────
 
-const assetsPanel = new AssetsPanel(propertySystem, marketAccessSystem, {
+const refreshAssetsPanel = () => {
+  assetsPanel.refresh(
+    player.cash,
+    rankSystem.getHighestRankIndex(),
+    player.getNetWorth(market),
+    bmSystem.unlocked,
+  );
+};
+
+const assetsPanel = new AssetsPanel(propertySystem, marketAccessSystem, market, {
   onBuyProperty(configId) {
     const result = propertySystem.buy(configId, player.cash);
     renderer.showToast(result.message, result.success ? 'success' : 'error');
@@ -590,7 +600,7 @@ const assetsPanel = new AssetsPanel(propertySystem, marketAccessSystem, {
       eventSystem.addEntry(result.message, 'good');
       soundSystem.play('buy');
       localStorage.setItem('idlestonks_properties', JSON.stringify(propertySystem.saveState()));
-      assetsPanel.refresh(player.cash, rankSystem.getHighestRankIndex(), player.getNetWorth(market));
+      refreshAssetsPanel();
     }
   },
   onUpgradeProperty(configId) {
@@ -601,12 +611,17 @@ const assetsPanel = new AssetsPanel(propertySystem, marketAccessSystem, {
       eventSystem.addEntry(result.message, 'good');
       soundSystem.play('rank_up');
       localStorage.setItem('idlestonks_properties', JSON.stringify(propertySystem.saveState()));
-      assetsPanel.refresh(player.cash, rankSystem.getHighestRankIndex(), player.getNetWorth(market));
+      refreshAssetsPanel();
     }
   },
   onUnlockMarket(marketId) {
-    const nw = player.getNetWorth(market);
-    const result = marketAccessSystem.unlock(marketId, player.cash, rankSystem.getHighestRankIndex(), nw);
+    const ctx = {
+      cash: player.cash,
+      rankIndex: rankSystem.getHighestRankIndex(),
+      netWorth: player.getNetWorth(market),
+      blackMarketUnlocked: bmSystem.unlocked,
+    };
+    const result = marketAccessSystem.unlock(marketId, ctx);
     renderer.showToast(result.message, result.success ? 'success' : 'error');
     if (result.success) {
       player.cash -= result.cost;
@@ -617,8 +632,13 @@ const assetsPanel = new AssetsPanel(propertySystem, marketAccessSystem, {
       eventSystem.addEntry(result.message, 'good');
       soundSystem.play('unlock');
       localStorage.setItem('idlestonks_market_access', JSON.stringify(marketAccessSystem.saveState()));
-      assetsPanel.refresh(player.cash, rankSystem.getHighestRankIndex(), nw);
+      if (result.market) showMarketUnlockCelebration(result.market, market);
+      refreshAssetsPanel();
     }
+  },
+  onGoToMarket() {
+    const tabBtn = document.getElementById('tab-market');
+    if (tabBtn) (tabBtn as HTMLElement).click();
   },
 });
 
@@ -642,7 +662,7 @@ assetsPanel.mount(document.getElementById('assets-panel-mount')!);
     }
   } catch { /* noop */ }
 
-  assetsPanel.refresh(player.cash, rankSystem.getHighestRankIndex(), player.getNetWorth(market));
+  refreshAssetsPanel();
 })();
 
 missionSystem.setOnComplete((m) => {

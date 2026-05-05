@@ -1,23 +1,40 @@
 import type { PropertySystem, PropertyConfig, OwnedProperty } from '../systems/PropertySystem.ts';
-import type { MarketAccessSystem, MarketDef } from '../systems/MarketAccessSystem.ts';
+import type { MarketAccessSystem } from '../systems/MarketAccessSystem.ts';
 import { PROPERTY_CATALOG, TENANTS } from '../systems/PropertySystem.ts';
+import type { Market } from '../core/Market.ts';
+import { MarketAccessPanel } from './MarketAccessPanel.ts';
 
 export interface AssetsPanelCallbacks {
   onBuyProperty: (configId: string) => void;
   onUpgradeProperty: (configId: string) => void;
   onUnlockMarket: (marketId: string) => void;
+  onGoToMarket?: (marketId: string) => void;
 }
 
 export class AssetsPanel {
   private el: HTMLElement | null = null;
   private readonly propSys: PropertySystem;
   private readonly masSys: MarketAccessSystem;
+  private readonly market: Market;
   private readonly cb: AssetsPanelCallbacks;
+  private readonly maPanel: MarketAccessPanel;
 
-  constructor(propSys: PropertySystem, masSys: MarketAccessSystem, cb: AssetsPanelCallbacks) {
+  private lastCtx = { cash: 0, rankIndex: 0, netWorth: 0, blackMarketUnlocked: false };
+
+  constructor(
+    propSys: PropertySystem,
+    masSys: MarketAccessSystem,
+    market: Market,
+    cb: AssetsPanelCallbacks,
+  ) {
     this.propSys = propSys;
     this.masSys  = masSys;
+    this.market  = market;
     this.cb      = cb;
+    this.maPanel = new MarketAccessPanel(masSys, market, {
+      onUnlockMarket: id => cb.onUnlockMarket(id),
+      onGoToMarket: id => cb.onGoToMarket?.(id),
+    });
   }
 
   mount(container: HTMLElement): void {
@@ -26,19 +43,21 @@ export class AssetsPanel {
     this._bindEvents();
   }
 
-  refresh(playerCash: number, rankIndex: number, netWorth: number): void {
+  refresh(playerCash: number, rankIndex: number, netWorth: number, blackMarketUnlocked = false): void {
     if (!this.el) return;
-    this.el.innerHTML = this._buildHTML(playerCash, rankIndex, netWorth);
+    this.lastCtx = { cash: playerCash, rankIndex, netWorth, blackMarketUnlocked };
+    this.el.innerHTML = this._buildHTML(playerCash, rankIndex, netWorth, blackMarketUnlocked);
     this._bindEvents();
   }
 
   // ── HTML builders ──────────────────────────────────────────────────────────
 
-  private _buildHTML(cash = 0, rankIndex = 0, netWorth = 0): string {
+  private _buildHTML(cash = 0, rankIndex = 0, netWorth = 0, blackMarketUnlocked = false): string {
+    this.lastCtx = { cash, rankIndex, netWorth, blackMarketUnlocked };
     return `
       <div class="assets-tab-wrap">
         ${this._buildPropertiesSection(cash)}
-        ${this._buildMarketAccessSection(cash, rankIndex, netWorth)}
+        ${this.maPanel.buildHTML({ cash, rankIndex, netWorth, blackMarketUnlocked })}
       </div>`;
   }
 
@@ -141,83 +160,6 @@ export class AssetsPanel {
       </div>`;
   }
 
-  private _buildMarketAccessSection(cash: number, rankIndex: number, netWorth: number): string {
-    const markets = this.masSys.getMarkets();
-    const cards = markets.map(m => this._buildMarketCard(m, cash, rankIndex, netWorth)).join('');
-    return `
-      <div class="assets-section">
-        <div class="assets-section-header">
-          <span>📈 Market Access</span>
-          <span class="assets-summary-val col-muted">${markets.filter(m => m.unlocked).length}/${markets.length} unlocked</span>
-        </div>
-        <div class="market-access-grid">${cards}</div>
-      </div>`;
-  }
-
-  private _buildMarketCard(m: MarketDef, cash: number, rankIndex: number, netWorth: number): string {
-    const RANK_NAMES = ['Rookie', 'Day Trader', 'Intern', 'Manipulator', 'Wolf', 'Overlord'];
-
-    if (m.unlocked) {
-      const pills = m.assetIds.slice(0, 5).map(id =>
-        `<span class="market-asset-pill">${id.replace(/_/g, ' ')}</span>`
-      ).join('');
-      return `
-        <div class="market-card market-card-unlocked">
-          <div class="market-card-header">
-            <span class="market-emoji">${m.emoji}</span>
-            <div class="market-card-meta">
-              <div class="market-name">${m.name}</div>
-              <div class="market-desc">${m.description}</div>
-            </div>
-            <span class="market-unlocked-badge">✓ UNLOCKED</span>
-          </div>
-          <div class="market-asset-pills">${pills}</div>
-        </div>`;
-    }
-
-    const { ok, reason } = this.masSys.canUnlock(m.id, rankIndex, netWorth);
-    const meetsReqs = ok;
-    const canAfford = meetsReqs && cash >= m.accessCost;
-    const rankMet = rankIndex >= m.requiredRank;
-    const nwMet = netWorth >= m.requiredNetWorth;
-
-    const reqs = [
-      `<span class="market-req ${rankMet ? 'req-met' : 'req-unmet'}">${rankMet ? '✓' : '✗'} ${RANK_NAMES[m.requiredRank]} rank</span>`,
-      m.requiredNetWorth > 0
-        ? `<span class="market-req ${nwMet ? 'req-met' : 'req-unmet'}">${nwMet ? '✓' : '✗'} $${m.requiredNetWorth.toLocaleString()} net worth</span>`
-        : '',
-    ].filter(Boolean).join('');
-
-    const pills = m.assetIds.slice(0, 5).map(id =>
-      `<span class="market-asset-pill market-asset-pill-locked">${id.replace(/_/g, ' ')}</span>`
-    ).join('');
-
-    const btnLabel = canAfford
-      ? `🔓 Unlock $${m.accessCost.toLocaleString()}`
-      : meetsReqs
-        ? `🔒 Need $${m.accessCost.toLocaleString()}`
-        : `🔒 ${reason}`;
-
-    return `
-      <div class="market-card market-card-locked">
-        <div class="market-card-header">
-          <span class="market-emoji market-emoji-locked">${m.emoji}</span>
-          <div class="market-card-meta">
-            <div class="market-name">${m.name}</div>
-            <div class="market-desc">${m.description}</div>
-          </div>
-        </div>
-        <div class="market-reqs">${reqs}</div>
-        <div class="market-asset-pills">${pills}</div>
-        <button
-          class="btn ${canAfford ? 'btn-buy' : 'btn-ghost-sm'} market-unlock-btn"
-          data-market-unlock="${m.id}"
-          ${canAfford ? '' : 'disabled'}>
-          ${btnLabel}
-        </button>
-      </div>`;
-  }
-
   // ── Event binding ──────────────────────────────────────────────────────────
 
   private _bindEvents(): void {
@@ -231,8 +173,6 @@ export class AssetsPanel {
       btn.addEventListener('click', () => this.cb.onUpgradeProperty(btn.dataset.propUpgrade!));
     });
 
-    this.el.querySelectorAll<HTMLButtonElement>('[data-market-unlock]').forEach(btn => {
-      btn.addEventListener('click', () => this.cb.onUnlockMarket(btn.dataset.marketUnlock!));
-    });
+    this.maPanel.bindEvents(this.el, this.lastCtx);
   }
 }
