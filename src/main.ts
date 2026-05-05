@@ -23,6 +23,7 @@ import { screenFlash, screenShake, spawnBigSellCelebration, showEventFlashBanner
 import { AchievementSystem } from './systems/AchievementSystem.ts';
 import { PropertySystem } from './systems/PropertySystem.ts';
 import { MarketAccessSystem } from './systems/MarketAccessSystem.ts';
+import { ScoutSystem } from './systems/ScoutSystem.ts';
 import { AssetsPanel } from './ui/AssetsPanel.ts';
 import { showMarketUnlockCelebration } from './ui/MarketModals.ts';
 
@@ -55,6 +56,7 @@ const achievementSystem  = new AchievementSystem();
 const qteOverlay         = new QteOverlay();
 const propertySystem     = new PropertySystem();
 const marketAccessSystem = new MarketAccessSystem();
+const scoutSystem        = new ScoutSystem();
 
 // ── Idle system ───────────────────────────────────────────────────────────────
 // Created before renderer so save restoration can set day state before first render.
@@ -234,6 +236,16 @@ const idleSystem = new IdleSystem(
 
       // Achievement checks every 5 ticks
       if (tick % 5 === 0) checkAchievements();
+
+      // Scout alerts: notify on big position swings (Manipulator+ only)
+      if (tick % 5 === 0) {
+        const scoutAlerts = scoutSystem.check(player, market, rankSystem.getHighestRankIndex());
+        for (const alert of scoutAlerts) {
+          renderer.showToast(alert.message, alert.kind === 'profit' ? 'success' : 'error');
+          eventSystem.addEntry(alert.message, alert.kind === 'profit' ? 'good' : 'bad');
+          soundSystem.play(alert.kind === 'profit' ? 'profit' : 'risk_warning');
+        }
+      }
 
       renderer.update(market, player, eventSystem, upgradeSystem, tick, day, secondsInDay, secondsPerDay, newsSystem, rankSystem, investorSystem, nwHistory);
     },

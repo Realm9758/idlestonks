@@ -131,7 +131,7 @@ export function updateMarket(
     priceEl.textContent = formatCurrency(asset.price);
 
     const sparkEl = row.querySelector<HTMLElement>('.asset-sparkline');
-    if (sparkEl) sparkEl.innerHTML = buildSparklineSvg(asset.priceHistory);
+    if (sparkEl) sparkEl.innerHTML = buildSparklineSvg(asset.priceHistory, asset.dayOpenPrice);
 
     const pct = asset.getPriceChangePct();
     const changeEl = row.querySelector('.asset-change') as HTMLElement;
