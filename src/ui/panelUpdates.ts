@@ -301,10 +301,87 @@ export function updateMarket(
     }
   }
 
-  updateOpportunityBar(market, newsSystem);
+  updateOpportunityBar(market, newsSystem, state);
+  updateHoldingsStrip(market, state);
 }
 
-function updateOpportunityBar(market: Market, newsSystem: NewsSystem | null): void {
+function updateHoldingsStrip(market: Market, state: MarketPanelState): void {
+  const strip = document.getElementById('holdings-strip');
+  const cardsEl = document.getElementById('hs-cards');
+  const summaryEl = document.getElementById('hs-summary');
+  if (!strip || !cardsEl || !summaryEl) return;
+
+  const owned = market.getUnlockedAssets().filter(a => a.owned > 0);
+  if (owned.length === 0) { strip.classList.add('hidden'); return; }
+  strip.classList.remove('hidden');
+
+  const player = state.storedPlayer;
+  type Row = { asset: Asset; plPct: number; plDollar: number; value: number; basis: number | null };
+  const rows: Row[] = owned.map(a => {
+    const basis = player?.costBasis[a.id] ?? null;
+    const value = a.price * a.owned;
+    const plDollar = basis ? (a.price - basis) * a.owned : 0;
+    const plPct    = basis ? ((a.price - basis) / basis) * 100 : 0;
+    return { asset: a, plPct, plDollar, value, basis };
+  });
+  rows.sort((x, y) => y.plPct - x.plPct);
+
+  const totalValue = rows.reduce((s, r) => s + r.value, 0);
+  const totalPl    = rows.reduce((s, r) => s + r.plDollar, 0);
+  const plPos = totalPl >= 0;
+  const plSign = plPos ? '+' : '−';
+  const absTot = Math.abs(totalPl);
+  const totStr = absTot >= 1000 ? `$${(absTot/1000).toFixed(1)}k` : `$${absTot.toFixed(absTot < 10 ? 2 : 0)}`;
+  summaryEl.innerHTML = `<span class="hs-tot-value">${formatCurrency(totalValue)}</span> <span class="hs-tot-pl ${plPos ? 'hs-pos' : 'hs-neg'}">${plSign}${totStr}</span>`;
+
+  const newHtml = rows.map(r => {
+    const cls = r.basis ? (r.plPct >= 0 ? 'hs-pos' : 'hs-neg') : 'hs-neutral';
+    const sign = r.plPct >= 0 ? '+' : '';
+    const plLabel = r.basis ? `${sign}${r.plPct.toFixed(1)}%` : '—';
+    return `<div class="hs-card" data-hs-asset="${r.asset.id}">
+      <button class="hs-jump" data-hs-jump="${r.asset.id}" type="button" title="Jump to ${r.asset.name}">
+        <span class="hs-emoji">${r.asset.emoji}</span>
+        <span class="hs-name">${r.asset.name}</span>
+        <span class="hs-qty">${r.asset.owned}×</span>
+        <span class="hs-pl ${cls}">${plLabel}</span>
+      </button>
+      <button class="hs-sell" data-hs-sell="${r.asset.id}" type="button" title="Sell all ${r.asset.owned} ${r.asset.name}">Sell</button>
+    </div>`;
+  }).join('');
+
+  if (cardsEl.dataset.key !== newHtml) {
+    cardsEl.dataset.key = newHtml;
+    cardsEl.innerHTML = newHtml;
+    cardsEl.querySelectorAll<HTMLButtonElement>('[data-hs-jump]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const id = btn.dataset.hsJump!;
+        const row = document.querySelector<HTMLElement>(`.asset-row[data-id="${id}"]`);
+        if (!row) return;
+        row.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        row.classList.add('opp-jump-pulse');
+        setTimeout(() => row.classList.remove('opp-jump-pulse'), 1400);
+      });
+    });
+    cardsEl.querySelectorAll<HTMLButtonElement>('[data-hs-sell]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const id = btn.dataset.hsSell!;
+        state.assetRowCallbacks.onSellAll(id);
+      });
+    });
+  } else {
+    cardsEl.querySelectorAll<HTMLElement>('.hs-pl').forEach(el => {
+      const card = el.closest<HTMLElement>('.hs-card');
+      const id = card?.dataset.hsAsset;
+      const row = rows.find(r => r.asset.id === id);
+      if (!row) return;
+      const sign = row.plPct >= 0 ? '+' : '';
+      el.textContent = row.basis ? `${sign}${row.plPct.toFixed(1)}%` : '—';
+      el.className = `hs-pl ${row.basis ? (row.plPct >= 0 ? 'hs-pos' : 'hs-neg') : 'hs-neutral'}`;
+    });
+  }
+}
+
+function updateOpportunityBar(market: Market, newsSystem: NewsSystem | null, state: MarketPanelState): void {
   const bar = document.getElementById('market-opportunity-bar');
   const cardsEl = document.getElementById('opp-cards');
   if (!bar || !cardsEl) return;
@@ -317,18 +394,31 @@ function updateOpportunityBar(market: Market, newsSystem: NewsSystem | null): vo
 
   bar.classList.remove('hidden');
   const newHtml = tops.map(({ asset, reason }) => {
-    const ds = getDecisionSignal(asset, activeNews);
-    return `<div class="opp-card">
+    const ds = getStableDecisionSignal(asset, activeNews, state.signalHistory);
+    return `<button class="opp-card opp-card-btn" type="button" data-opp-asset="${asset.id}" title="Jump to ${asset.name}">
       <span class="opp-card-emoji">${asset.emoji}</span>
       <div class="opp-card-body">
         <span class="opp-card-name">${asset.name}</span>
         <span class="opp-card-reason">${reason}</span>
       </div>
       <span class="opp-card-signal ${ds.cls}">${ds.signal}</span>
-    </div>`;
+      <span class="opp-card-jump">↗</span>
+    </button>`;
   }).join('');
 
-  if (cardsEl.innerHTML !== newHtml) cardsEl.innerHTML = newHtml;
+  if (cardsEl.innerHTML !== newHtml) {
+    cardsEl.innerHTML = newHtml;
+    cardsEl.querySelectorAll<HTMLButtonElement>('[data-opp-asset]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const id = btn.dataset.oppAsset!;
+        const row = document.querySelector<HTMLElement>(`.asset-row[data-id="${id}"]`);
+        if (!row) return;
+        row.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        row.classList.add('opp-jump-pulse');
+        setTimeout(() => row.classList.remove('opp-jump-pulse'), 1400);
+      });
+    });
+  }
 }
 
 // ── Fear & Greed ───────────────────────────────────────────────────────────────

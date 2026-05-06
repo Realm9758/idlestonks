@@ -10,7 +10,7 @@ export function buildSparklineSvg(history: number[], dayOpen?: number): string {
   const max = dayOpen !== undefined ? Math.max(dataMax, dayOpen) : dataMax;
   const range = max - min || min * 0.01 || 1;
 
-  const W = 110; const H = 40;
+  const W = 90; const H = 30;
   const pad = 3;
   const yOf = (p: number) => H - pad - ((p - min) / range) * (H - pad * 2);
 

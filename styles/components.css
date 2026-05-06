@@ -1,5 +1,5 @@
 /* ── Asset cards (new design) ───────────────────────────────────────────────── */
-#asset-list { padding: 10px; display: flex; flex-direction: column; gap: 8px; }
+#asset-list { padding: 8px; display: flex; flex-direction: column; gap: 5px; }
 
 .asset-row {
   display: flex;
@@ -38,7 +38,7 @@
 }
 
 .asset-icon-wrap {
-  font-size: 26px;
+  font-size: 22px;
   line-height: 1;
   flex-shrink: 0;
 }
@@ -89,10 +89,10 @@
 .asset-action-row {
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 10px 14px 12px;
+  gap: 5px;
+  padding: 5px 10px 7px;
   border-top: 1px solid var(--border);
-  background: rgba(0,0,0,0.1);
+  background: rgba(0,0,0,0.08);
   flex-wrap: wrap;
 }
 
@@ -106,12 +106,12 @@
 }
 
 .btn-qty {
-  width: 28px;
-  height: 28px;
+  width: 22px;
+  height: 22px;
   background: transparent;
   border: none;
   color: var(--text-muted);
-  font-size: 16px;
+  font-size: 14px;
   cursor: pointer;
   display: flex;
   align-items: center;
@@ -123,15 +123,15 @@
 .btn-qty:hover { color: var(--text); background: rgba(255,255,255,0.06); }
 
 .qty-input {
-  width: 44px;
-  padding: 4px 2px;
+  width: 38px;
+  padding: 3px 2px;
   background: transparent;
   border: none;
   border-left: 1px solid var(--border);
   border-right: 1px solid var(--border);
   color: var(--text);
   font-family: var(--font);
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 600;
   text-align: center;
 }

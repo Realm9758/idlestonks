@@ -128,6 +128,13 @@ export const LAYOUT_HTML = `
         </div>
         <div id="opp-cards" class="opp-cards"></div>
       </div>
+      <div id="holdings-strip" class="holdings-strip hidden">
+        <div class="hs-header">
+          <span class="hs-label">💼 Your Holdings</span>
+          <span id="hs-summary" class="hs-summary"></span>
+        </div>
+        <div id="hs-cards" class="hs-cards"></div>
+      </div>
       <div id="asset-list"></div>
     </div>
 
