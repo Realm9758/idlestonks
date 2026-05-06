@@ -392,6 +392,61 @@ export function getStorySentence(asset: Asset, activeNews: NewsItem[], day: numb
   return `📊 No strong signal — monitor for momentum or hype changes`;
 }
 
+// ── Adaptive status line (single line that folds tags + story + timing) ─────
+//
+// Picks the single most-relevant signal right now and renders it as one short
+// sentence with a tone class. Replaces the multi-element story/tags/timing
+// stack on the main asset card.
+
+export interface AdaptiveStatus { text: string; cls: string; }
+
+export function getAdaptiveStatusLine(asset: Asset, activeNews: NewsItem[], day: number): AdaptiveStatus {
+  const { hype, momentum, stability, carryingCost } = asset;
+
+  const news = activeNews.filter(n => n.targetAssetId === asset.id);
+  if (news.length > 0) {
+    const n = news[0];
+    const daysLeft = n.triggerDay - day;
+    const dayStr   = daysLeft <= 1 ? 'today' : `in ${daysLeft}d`;
+    return { text: `📰 News resolves ${dayStr} — catalyst pending`, cls: 'sl-news' };
+  }
+
+  if (hype > 0.75 && momentum > 0.005) {
+    const decay = getHypeDecayTicks(asset);
+    return { text: `🔥 Viral & rising — fades in ~${decay} ticks`, cls: 'sl-hot' };
+  }
+  if (hype > 0.75 && momentum <= 0)
+    return { text: `⚠️ Peak hype passing — exit window closing`, cls: 'sl-warn' };
+
+  if (momentum > 0.022)
+    return { text: `🚀 Surging (${(momentum * 100).toFixed(2)}%) — riding strong uptrend`, cls: 'sl-surge' };
+  if (momentum < -0.022)
+    return { text: `💥 Crashing — wait for reversal`, cls: 'sl-bad' };
+
+  if (hype > 0.45 && momentum > 0.005)
+    return { text: `🟢 Hype + momentum aligned — entry window`, cls: 'sl-good' };
+  if (hype > 0.45 && momentum < -0.005)
+    return { text: `🟡 Hype fading — watch for reversal`, cls: 'sl-warn' };
+
+  if (carryingCost > 0 && hype < 0.2 && momentum < 0) {
+    const dailyBleed = (carryingCost * 60 * 100).toFixed(2);
+    return { text: `💸 Bleeding ~${dailyBleed}%/day — no catalyst`, cls: 'sl-bad' };
+  }
+
+  if (momentum > 0.008)
+    return { text: `📈 Trending up — momentum building`, cls: 'sl-good' };
+  if (momentum < -0.008)
+    return { text: `📉 Falling — momentum negative`, cls: 'sl-warn' };
+
+  if (stability > 0.6)
+    return { text: `🛡 Steady — safe to accumulate`, cls: 'sl-stable' };
+
+  if (hype < 0.12)
+    return { text: `😴 Quiet — no signal`, cls: 'sl-mute' };
+
+  return { text: `📊 Mixed signals — watching`, cls: 'sl-mute' };
+}
+
 // ── Concrete volatility profile (shown in insight panel) ─────────────────────
 
 export function getConcreteVolatilityInfo(asset: Asset): string {

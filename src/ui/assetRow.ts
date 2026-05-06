@@ -38,6 +38,7 @@ export function buildAssetRow(
             <span class="asset-ticker">${ticker}</span>
             <span class="asset-trend hidden"></span>
           </div>
+          <span class="asset-status-line sl-mute">📊 Watching</span>
           <span class="asset-owned"></span>
         </div>
       </div>
@@ -71,10 +72,7 @@ export function buildAssetRow(
           <div class="hype-bar-fill hype-fill-cold" style="width:0%"></div>
         </div>
         <span class="hype-bar-label">HYPE 0%</span>
-        <span class="asset-timing tw-neutral">⏳ WATCHING</span>
       </div>
-      <div class="asset-tags"></div>
-      <div class="asset-story"></div>
       <div class="asset-news-line hidden"></div>
       <div class="adp-footer">
         <button class="btn-analyse btn-ghost-sm btn-sm">🔍 Analyse</button>

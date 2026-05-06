@@ -8,7 +8,7 @@ import type { InvestorSystem } from '../systems/InvestorSystem.ts';
 import type { Asset } from '../core/Asset.ts';
 import {
   formatCurrency, formatPct, timeAgo, createEl,
-  getDecisionSignal, getStableDecisionSignal, getStockTags, getStorySentence, getTimingWindow, getTopOpportunities,
+  getStableDecisionSignal, getAdaptiveStatusLine, getTopOpportunities,
   SECTORS, SECTOR_ORDER, SECTOR_MAP,
 } from './components.ts';
 import type { SignalHysteresisEntry } from './components.ts';
@@ -162,35 +162,14 @@ export function updateMarket(
       hypeBarLabel.textContent = `HYPE ${hypePct}%`;
     }
 
-    const timingEl = row.querySelector<HTMLElement>('.asset-timing');
-    if (timingEl) {
-      const tw = getTimingWindow(asset);
-      if (timingEl.dataset.tw !== tw.cls) {
-        timingEl.dataset.tw = tw.cls;
-        timingEl.textContent = tw.text;
-        timingEl.className = `asset-timing ${tw.cls}`;
+    const statusEl = row.querySelector<HTMLElement>('.asset-status-line');
+    if (statusEl) {
+      const sl = getAdaptiveStatusLine(asset, activeNews, day);
+      if (statusEl.dataset.sl !== sl.cls + sl.text) {
+        statusEl.dataset.sl = sl.cls + sl.text;
+        statusEl.textContent = sl.text;
+        statusEl.className = `asset-status-line ${sl.cls}`;
       }
-    }
-
-    const tagsEl = row.querySelector('.asset-tags') as HTMLElement | null;
-    if (tagsEl) {
-      const newHtml = getStockTags(asset).map(t => `<span class="asset-tag ${t.cls}">${t.label}</span>`).join('');
-      if (tagsEl.innerHTML !== newHtml) tagsEl.innerHTML = newHtml;
-    }
-
-    const storyEl = row.querySelector<HTMLElement>('.asset-story');
-    if (storyEl) {
-      const story = getStorySentence(asset, activeNews, day);
-      if (storyEl.textContent !== story) storyEl.textContent = story;
-      const isNews    = story.includes('News resolves');
-      const isHype    = story.startsWith('🔥');
-      const isBad     = story.startsWith('☠️') || story.startsWith('💸') || story.startsWith('⚠️');
-      const isSurging = story.startsWith('🚀');
-      storyEl.className = 'asset-story' +
-        (isNews    ? ' story-news'    : '') +
-        (isHype    ? ' story-hype'    : '') +
-        (isBad     ? ' story-bad'     : '') +
-        (isSurging ? ' story-surge'   : '');
     }
 
     row.classList.toggle('risk-high', asset.risk > 0.68);
